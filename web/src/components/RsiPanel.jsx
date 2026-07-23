@@ -34,6 +34,8 @@ export default function RsiPanel({
   symbol,
   period = 14,
   threshold = 50,
+  overbought = 70,
+  oversold = 30,
   position = 'bottom-right',
   showValues = true,
   liveCandle,
@@ -105,13 +107,20 @@ export default function RsiPanel({
             const val = rows[tf.key];
             const has = val != null;
             const up = has && val > threshold;
-            const cls = !has ? 'rsi-na' : up ? 'rsi-up' : 'rsi-down';
+            const ob = has && val >= overbought; // sobrecomprado
+            const os = has && val <= oversold; // sobrevendido
+            const baseCls = !has ? 'rsi-na' : up ? 'rsi-up' : 'rsi-down';
+            const zoneCls = ob ? 'rsi-ob' : os ? 'rsi-os' : '';
             const status = up ? 'Alta' : 'Baixa';
             const text = !has ? '—' : showValues ? `${val.toFixed(2)} · ${status}` : status;
             return (
               <tr key={tf.key}>
                 <td className="rsi-tf">{tf.label}</td>
-                <td className={`rsi-val ${cls}`}>{text}</td>
+                <td className={`rsi-val ${baseCls} ${zoneCls}`}>
+                  <span className="rsi-text">{text}</span>
+                  {ob && <span className="rsi-flag ob" title={`Sobrecomprado (RSI ≥ ${overbought})`}>SC</span>}
+                  {os && <span className="rsi-flag os" title={`Sobrevendido (RSI ≤ ${oversold})`}>SV</span>}
+                </td>
               </tr>
             );
           })}

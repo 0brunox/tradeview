@@ -25,7 +25,7 @@ function makeDefaults() {
     volume: { on: true },
     rsi: { on: true, period: 14 },
     macd: { on: false, fast: 12, slow: 26, signal: 9 },
-    rsimtf: { on: false, period: 14, threshold: 50, pos: 'bottom-right', showValues: true },
+    rsimtf: { on: false, period: 14, threshold: 50, overbought: 70, oversold: 30, pos: 'bottom-right', showValues: true },
   };
 }
 
@@ -190,6 +190,8 @@ export default function App() {
               symbol={symbol}
               period={indicators.rsimtf.period}
               threshold={indicators.rsimtf.threshold}
+              overbought={indicators.rsimtf.overbought}
+              oversold={indicators.rsimtf.oversold}
               position={indicators.rsimtf.pos}
               showValues={indicators.rsimtf.showValues}
               liveCandle={liveCandle}

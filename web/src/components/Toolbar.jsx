@@ -183,6 +183,8 @@ export default function Toolbar({
 
           <Num label="RSI MTF per." value={i.rsimtf.period} min={2} max={100} onChange={(v) => onPeriod('rsimtf', 'period', v)} />
           <Num label="MTF limiar" value={i.rsimtf.threshold} min={1} max={99} step={0.5} onChange={(v) => onPeriod('rsimtf', 'threshold', v)} />
+          <Num label="MTF sobrecompra" value={i.rsimtf.overbought} min={50} max={100} step={0.5} onChange={(v) => onPeriod('rsimtf', 'overbought', v)} />
+          <Num label="MTF sobrevenda" value={i.rsimtf.oversold} min={0} max={50} step={0.5} onChange={(v) => onPeriod('rsimtf', 'oversold', v)} />
           <label className="num">
             <span>MTF posição</span>
             <select value={i.rsimtf.pos} onChange={(e) => onPeriod('rsimtf', 'pos', e.target.value)}>
