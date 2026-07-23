@@ -1,0 +1,23 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: tradeview-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tradeview
+      POSTGRES_PASSWORD: tradeview
+      POSTGRES_DB: tradeview
+    ports:
+      - "5432:5432"
+    volumes:
+      - tradeview_pgdata:/var/lib/postgresql/data
+      # schema is auto-applied on first boot of an empty data dir
+      - ./server/src/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tradeview -d tradeview"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  tradeview_pgdata:

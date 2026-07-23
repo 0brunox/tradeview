@@ -1,0 +1,17 @@
+import 'dotenv/config';
+
+function stripSlash(url) {
+  return url.replace(/\/+$/, '');
+}
+
+export const config = {
+  port: Number(process.env.PORT ?? 4000),
+  webOrigin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
+  binanceRest: stripSlash(process.env.BINANCE_REST ?? 'https://api.binance.com'),
+  binanceWs: stripSlash(process.env.BINANCE_WS ?? 'wss://stream.binance.com:9443'),
+  databaseUrl: process.env.DATABASE_URL ?? '',
+  dbEnabled: (process.env.DB_ENABLED ?? 'true').toLowerCase() !== 'false',
+};
+
+// Timeframes we accept and forward to Binance (Binance interval strings).
+export const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'];
