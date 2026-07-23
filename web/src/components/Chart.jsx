@@ -34,8 +34,15 @@ const C = {
   signal: '#ff7043',
 };
 
+// Lightweight-charts rejects histogram values outside ±(MAX_SAFE_INTEGER/100).
+// Micro-cap tokens (e.g. PEPE) can have weekly/monthly base-volume above that, so clamp.
+const MAX_HIST = 9e13;
 const toBar = (c) => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close });
-const toVol = (c) => ({ time: c.time, value: c.volume, color: c.close >= c.open ? C.volUp : C.volDown });
+const toVol = (c) => ({
+  time: c.time,
+  value: Math.min(c.volume, MAX_HIST),
+  color: c.close >= c.open ? C.volUp : C.volDown,
+});
 
 function chartOptions() {
   return {

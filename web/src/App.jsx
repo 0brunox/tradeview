@@ -8,7 +8,7 @@ import { createLiveClient } from './api/ws.js';
 import { loadState, saveState } from './lib/storage.js';
 import { API_BASE, IS_DIRECT } from './api/config.js';
 
-const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'];
+const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '12h', '1d', '1w', '1M'];
 const EMA_COLORS = ['#42a5f5', '#ff9800', '#ab47bc', '#26c6da', '#ec407a', '#9ccc65'];
 
 function makeDefaults() {

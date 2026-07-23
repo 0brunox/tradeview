@@ -61,15 +61,24 @@ export class LiveClient {
 class RouterLiveClient {
   constructor(opts = {}) {
     this.onCandle = opts.onCandle ?? (() => {});
-    this.binance = IS_DIRECT ? new BinanceLiveClient(opts) : new LiveClient(opts);
+    this.onStatus = opts.onStatus ?? (() => {});
+    this.active = 'binance';
+    const binanceOpts = { onCandle: this.onCandle, onStatus: (s) => this.report('binance', s) };
+    this.binance = IS_DIRECT ? new BinanceLiveClient(binanceOpts) : new LiveClient(binanceOpts);
     this.bybit = new BybitLiveClient({
-      onStatus: opts.onStatus,
+      onStatus: (s) => this.report('bybit', s),
       onCandle: (candle, sym, iv) => this.onCandle(candle, `BYBIT:${sym}`, iv),
     });
   }
 
+  // Only the active source drives the UI status; the idle client stays quiet.
+  report(source, status) {
+    if (source === this.active) this.onStatus(status);
+  }
+
   subscribe(fullSymbol, interval) {
     const { source, symbol } = parseSymbol(fullSymbol);
+    this.active = source === 'bybit' ? 'bybit' : 'binance';
     if (source === 'bybit') this.bybit.subscribe(symbol, interval);
     else this.binance.subscribe(symbol, interval);
   }
