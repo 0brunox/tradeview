@@ -126,6 +126,7 @@ export default function Toolbar({
         <Chip active={i.volume.on} onClick={() => onToggle('volume')} title="Volume">Volume</Chip>
         <Chip active={i.rsi.on} onClick={() => onToggle('rsi')} title="Índice de Força Relativa">RSI {i.rsi.period}</Chip>
         <Chip active={i.macd.on} onClick={() => onToggle('macd')} title="MACD">MACD</Chip>
+        <Chip active={i.rsimtf.on} onClick={() => onToggle('rsimtf')} title="Painel RSI multi-timeframe">RSI MTF</Chip>
 
         <button
           type="button"
@@ -179,6 +180,27 @@ export default function Toolbar({
           <Num label="MACD rápida" value={i.macd.fast} min={2} max={100} onChange={(v) => onPeriod('macd', 'fast', v)} />
           <Num label="MACD lenta" value={i.macd.slow} min={2} max={200} onChange={(v) => onPeriod('macd', 'slow', v)} />
           <Num label="MACD sinal" value={i.macd.signal} min={2} max={100} onChange={(v) => onPeriod('macd', 'signal', v)} />
+
+          <Num label="RSI MTF per." value={i.rsimtf.period} min={2} max={100} onChange={(v) => onPeriod('rsimtf', 'period', v)} />
+          <Num label="MTF limiar" value={i.rsimtf.threshold} min={1} max={99} step={0.5} onChange={(v) => onPeriod('rsimtf', 'threshold', v)} />
+          <label className="num">
+            <span>MTF posição</span>
+            <select value={i.rsimtf.pos} onChange={(e) => onPeriod('rsimtf', 'pos', e.target.value)}>
+              <option value="top-left">Sup. esquerda</option>
+              <option value="top-right">Sup. direita</option>
+              <option value="bottom-left">Inf. esquerda</option>
+              <option value="bottom-right">Inf. direita</option>
+            </select>
+          </label>
+          <label className="num chk">
+            <span>MTF valores</span>
+            <input
+              type="checkbox"
+              checked={i.rsimtf.showValues}
+              onChange={(e) => onPeriod('rsimtf', 'showValues', e.target.checked)}
+            />
+          </label>
+
           <button type="button" className="reset-btn" onClick={onResetIndicators} title="Restaurar indicadores padrão">
             ↺ Restaurar padrões
           </button>

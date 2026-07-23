@@ -119,6 +119,41 @@ body {
   width: 80px; background: var(--panel); color: var(--text);
   border: 1px solid var(--border); border-radius: 5px; padding: 5px 7px; font-size: 12px;
 }
+.num select {
+  background: var(--panel); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px; padding: 5px 7px; font-size: 12px;
+}
+.num.chk { flex-direction: row; align-items: center; gap: 6px; }
+.num.chk input { width: auto; }
+
+/* ---------- multi-timeframe RSI panel ---------- */
+.rsi-panel {
+  position: absolute; z-index: 6;
+  background: rgba(18, 21, 29, 0.92); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; min-width: 132px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  font-variant-numeric: tabular-nums; backdrop-filter: blur(2px);
+}
+.rsi-top-left { top: 44px; left: 12px; }
+.rsi-top-right { top: 12px; right: 12px; }
+.rsi-bottom-left { bottom: 12px; left: 12px; }
+.rsi-bottom-right { bottom: 12px; right: 12px; }
+.rsi-panel-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  margin-bottom: 6px; font-size: 11px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.rsi-panel-head .rsi-panel-sym { color: var(--text); font-weight: 700; }
+.rsi-table { border-collapse: collapse; width: 100%; }
+.rsi-table td { padding: 3px 4px; font-size: 12px; }
+.rsi-table .rsi-tf { color: var(--muted); font-weight: 600; padding-right: 10px; }
+.rsi-val {
+  text-align: right; font-weight: 600; border-radius: 4px;
+  padding: 3px 7px; white-space: nowrap;
+}
+.rsi-val.rsi-up { color: var(--up); background: rgba(38, 166, 154, 0.16); }
+.rsi-val.rsi-down { color: var(--down); background: rgba(239, 83, 80, 0.16); }
+.rsi-val.rsi-na { color: var(--muted); }
 
 /* ---------- body: chart + watchlist ---------- */
 .body { display: flex; flex: 1; min-height: 0; }

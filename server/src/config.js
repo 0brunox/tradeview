@@ -14,4 +14,5 @@ export const config = {
 };
 
 // Timeframes we accept and forward to Binance (Binance interval strings).
-export const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'];
+// Includes the higher frames used by the multi-timeframe RSI panel (12h, 1w, 1M).
+export const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '12h', '1d', '1w', '1M'];

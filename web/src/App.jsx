@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Toolbar from './components/Toolbar.jsx';
 import Chart from './components/Chart.jsx';
+import RsiPanel from './components/RsiPanel.jsx';
 import Watchlist from './components/Watchlist.jsx';
 import { fetchCandles } from './api/rest.js';
 import { createLiveClient } from './api/ws.js';
@@ -24,6 +25,7 @@ function makeDefaults() {
     volume: { on: true },
     rsi: { on: true, period: 14 },
     macd: { on: false, fast: 12, slow: 26, signal: 9 },
+    rsimtf: { on: false, period: 14, threshold: 50, pos: 'bottom-right', showValues: true },
   };
 }
 
@@ -181,6 +183,17 @@ export default function App() {
             />
           ) : (
             !error && <div className="banner">Carregando {symbol} · {interval}…</div>
+          )}
+
+          {indicators.rsimtf.on && (
+            <RsiPanel
+              symbol={symbol}
+              period={indicators.rsimtf.period}
+              threshold={indicators.rsimtf.threshold}
+              position={indicators.rsimtf.pos}
+              showValues={indicators.rsimtf.showValues}
+              liveCandle={liveCandle}
+            />
           )}
         </main>
 
