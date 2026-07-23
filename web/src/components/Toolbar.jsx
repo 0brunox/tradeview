@@ -34,10 +34,13 @@ function Num({ label, value, min, max, step, onChange }) {
 }
 
 export default function Toolbar({
-  symbol, onSymbol,
+  symbol, onSymbol, isFavorite, onToggleFavorite,
   interval, intervals, onInterval,
   indicators, onToggle, onPeriod, onResetIndicators,
-  drawMode, onToggleDraw, onClearDrawings, drawingCount,
+  onAddEma, onRemoveEma, onEmaField,
+  tool, onSelectTool,
+  drawingCount, onClearDrawings,
+  wlCollapsed, onToggleWatchlist,
   status, dbMode,
 }) {
   const [showSettings, setShowSettings] = useState(false);
@@ -46,9 +49,17 @@ export default function Toolbar({
   return (
     <header className="toolbar">
       <div className="toolbar-row">
-        <div className="brand">📈 TradeView</div>
+        <div className="brand">📈 ObrunoX Trade</div>
 
         <SymbolSearch value={symbol} onChange={onSymbol} />
+        <button
+          type="button"
+          className={`star ${isFavorite ? 'star-on' : ''}`}
+          onClick={onToggleFavorite}
+          title={isFavorite ? 'Remover dos favoritos' : 'Adicionar aos favoritos'}
+        >
+          {isFavorite ? '★' : '☆'}
+        </button>
 
         <div className="tf-group">
           {intervals.map((tf) => (
@@ -66,24 +77,41 @@ export default function Toolbar({
         <div className="tf-group draw-group">
           <button
             type="button"
-            className={`tf ${drawMode ? 'tf-on' : ''}`}
-            onClick={onToggleDraw}
+            className={`tf ${tool === 'trend' ? 'tf-on' : ''}`}
+            onClick={() => onSelectTool('trend')}
             title="Linha de tendência: clique dois pontos. Fora do modo, clique numa linha para apagá-la."
           >
             ✏ Linha
           </button>
           <button
             type="button"
+            className={`tf ${tool === 'measure' ? 'tf-on' : ''}`}
+            onClick={() => onSelectTool('measure')}
+            title="Régua: clique dois pontos para medir variação, barras e tempo."
+          >
+            📏 Régua
+          </button>
+          <button
+            type="button"
             className="tf"
             onClick={onClearDrawings}
             disabled={!drawingCount}
-            title="Limpar desenhos deste ativo/timeframe"
+            title="Limpar linhas deste ativo/timeframe"
           >
             🗑{drawingCount ? ` ${drawingCount}` : ''}
           </button>
         </div>
 
         <div className="spacer" />
+
+        <button
+          type="button"
+          className={`tf ${!wlCollapsed ? 'tf-on' : ''}`}
+          onClick={onToggleWatchlist}
+          title="Mostrar/ocultar favoritos"
+        >
+          ⭐ Favoritos
+        </button>
 
         {dbMode && <span className="db-badge" title="Estado do backend">db: {dbMode}</span>}
         <span className={`status status-${status}`}>
@@ -93,7 +121,7 @@ export default function Toolbar({
 
       <div className="toolbar-row indicators">
         <Chip active={i.sma.on} onClick={() => onToggle('sma')} title="Média Móvel Simples">SMA {i.sma.period}</Chip>
-        <Chip active={i.ema.on} onClick={() => onToggle('ema')} title="Média Móvel Exponencial">EMA {i.ema.period}</Chip>
+        <Chip active={i.ema.on} onClick={() => onToggle('ema')} title="Médias Móveis Exponenciais">EMA ({i.ema.lines.length})</Chip>
         <Chip active={i.boll.on} onClick={() => onToggle('boll')} title="Bandas de Bollinger">BB {i.boll.period},{i.boll.mult}</Chip>
         <Chip active={i.volume.on} onClick={() => onToggle('volume')} title="Volume">Volume</Chip>
         <Chip active={i.rsi.on} onClick={() => onToggle('rsi')} title="Índice de Força Relativa">RSI {i.rsi.period}</Chip>
@@ -103,7 +131,7 @@ export default function Toolbar({
           type="button"
           className={`chip gear ${showSettings ? 'chip-on' : ''}`}
           onClick={() => setShowSettings((v) => !v)}
-          title="Ajustar períodos"
+          title="Ajustar indicadores"
         >
           ⚙
         </button>
@@ -112,7 +140,39 @@ export default function Toolbar({
       {showSettings && (
         <div className="settings">
           <Num label="SMA" value={i.sma.period} min={2} max={400} onChange={(v) => onPeriod('sma', 'period', v)} />
-          <Num label="EMA" value={i.ema.period} min={2} max={400} onChange={(v) => onPeriod('ema', 'period', v)} />
+
+          <div className="ema-manager">
+            <div className="ema-title">EMAs</div>
+            {i.ema.lines.map((l) => (
+              <div className="ema-row" key={l.id}>
+                <input
+                  type="color"
+                  value={l.color}
+                  onChange={(e) => onEmaField(l.id, 'color', e.target.value)}
+                  title="Cor"
+                />
+                <input
+                  type="number"
+                  className="ema-period"
+                  value={l.period}
+                  min={2}
+                  max={400}
+                  onChange={(e) => onEmaField(l.id, 'period', Number(e.target.value))}
+                />
+                <button
+                  type="button"
+                  className="ema-del"
+                  onClick={() => onRemoveEma(l.id)}
+                  title="Remover EMA"
+                  disabled={i.ema.lines.length <= 1}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            <button type="button" className="ema-add" onClick={onAddEma}>+ EMA</button>
+          </div>
+
           <Num label="BB per." value={i.boll.period} min={2} max={400} onChange={(v) => onPeriod('boll', 'period', v)} />
           <Num label="BB mult." value={i.boll.mult} min={0.5} max={5} step={0.5} onChange={(v) => onPeriod('boll', 'mult', v)} />
           <Num label="RSI" value={i.rsi.period} min={2} max={100} onChange={(v) => onPeriod('rsi', 'period', v)} />

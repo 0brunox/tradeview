@@ -103,6 +103,25 @@ export async function searchSymbolsDirect(q = '', limit = 20) {
   return [...starts, ...contains].slice(0, limit);
 }
 
+// 24h ticker (price + change%) for a set of symbols — used by the watchlist.
+// Public market data; called directly against Binance in either data-source mode.
+export async function fetchTickers(symbols) {
+  if (!symbols || symbols.length === 0) return [];
+  try {
+    const param = encodeURIComponent(JSON.stringify(symbols));
+    const res = await fetch(`${BINANCE_REST}/api/v3/ticker/24hr?symbols=${param}`);
+    if (!res.ok) return [];
+    const rows = await res.json();
+    return rows.map((r) => ({
+      symbol: r.symbol,
+      price: +r.lastPrice,
+      changePct: +r.priceChangePercent,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // --- live klines straight from the Binance stream ---
 export class BinanceLiveClient {
   constructor({ onCandle, onStatus } = {}) {

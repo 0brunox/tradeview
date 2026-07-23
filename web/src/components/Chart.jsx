@@ -14,6 +14,7 @@ import { rsi } from '../indicators/rsi.js';
 import { macd } from '../indicators/macd.js';
 import { bollinger } from '../indicators/bollinger.js';
 import { TrendLinesPrimitive, nearestLine } from '../lib/trendPrimitive.js';
+import { MeasurePrimitive, makeMeasurement } from '../lib/measurePrimitive.js';
 
 const newId = () =>
   (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
@@ -76,7 +77,7 @@ function legendHtml(bar, symbol, interval) {
 
 export default function Chart({
   candles, indicators, liveCandle, symbol, interval,
-  drawMode = false, lines = [], onAddLine, onDeleteLine,
+  tool = 'none', lines = [], onAddLine, onDeleteLine,
 }) {
   const containerRef = useRef(null);
   const legendRef = useRef(null);
@@ -86,18 +87,20 @@ export default function Chart({
   const metaRef = useRef({ symbol, interval });
   metaRef.current = { symbol, interval };
 
-  // trend-line interaction state (synced from props each render)
-  const drawModeRef = useRef(drawMode);
-  drawModeRef.current = drawMode;
+  // interaction state (synced from props each render)
+  const toolRef = useRef(tool); // 'none' | 'trend' | 'measure'
+  toolRef.current = tool;
   const linesRef = useRef(lines);
   linesRef.current = lines || [];
   const onAddLineRef = useRef(onAddLine);
   onAddLineRef.current = onAddLine;
   const onDeleteLineRef = useRef(onDeleteLine);
   onDeleteLineRef.current = onDeleteLine;
-  const pendingStartRef = useRef(null); // first clicked point while drawing
-  const pendingRef = useRef(null); // rubber-band line { p1, p2 }
-  const hoveredRef = useRef(null); // id of hovered line
+  const pendingStartRef = useRef(null); // first clicked point while drawing a trend line
+  const pendingRef = useRef(null); // rubber-band trend line { p1, p2 }
+  const hoveredRef = useRef(null); // id of hovered trend line
+  const measureStartRef = useRef(null); // first clicked point of a measurement
+  const measureRef = useRef(null); // current measurement { p1, p2, stats }
 
   // ---- build / rebuild (on new data load or indicator-set change) ----
   useEffect(() => {
@@ -108,6 +111,11 @@ export default function Chart({
     if (isNewLoad) {
       dataRef.current = Array.isArray(candles) ? candles.slice() : [];
       loadedRef.current = candles;
+      // a measurement/pending line is tied to the previous market — drop it
+      measureStartRef.current = null;
+      measureRef.current = null;
+      pendingStartRef.current = null;
+      pendingRef.current = null;
     }
     const data = dataRef.current;
 
@@ -144,7 +152,7 @@ export default function Chart({
     });
     candleSeries.setData(data.map(toBar));
 
-    const api = { chart, candleSeries, volumeSeries: null, sma: null, ema: null, boll: null, rsi: null, macdSet: null };
+    const api = { chart, candleSeries, volumeSeries: null, sma: null, emas: null, boll: null, rsi: null, macdSet: null };
 
     if (indicators.volume?.on) {
       const vol = chart.addSeries(HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '' });
@@ -156,7 +164,10 @@ export default function Chart({
       api.sma = chart.addSeries(LineSeries, line({ color: C.sma }));
     }
     if (indicators.ema?.on) {
-      api.ema = chart.addSeries(LineSeries, line({ color: C.ema }));
+      api.emas = indicators.ema.lines.map((l) => ({
+        period: l.period,
+        series: chart.addSeries(LineSeries, line({ color: l.color })),
+      }));
     }
     if (indicators.boll?.on) {
       api.boll = {
@@ -187,7 +198,7 @@ export default function Chart({
     // recomputes every active indicator from an up-to-date candle array
     api.refreshIndicators = (d) => {
       if (api.sma) api.sma.setData(sma(d, indicators.sma.period));
-      if (api.ema) api.ema.setData(ema(d, indicators.ema.period));
+      if (api.emas) for (const e of api.emas) e.series.setData(ema(d, e.period));
       if (api.boll) {
         const b = bollinger(d, indicators.boll.period, indicators.boll.mult);
         api.boll.u.setData(b.upper);
@@ -219,12 +230,25 @@ export default function Chart({
       chart.timeScale().setVisibleLogicalRange({ from: Math.max(0, n - 160), to: n + 3 });
     }
 
-    // trend-line drawing primitive (pane 0)
+    // drawing primitives (pane 0): trend lines + measure box
     const trend = new TrendLinesPrimitive({ chart, series: candleSeries });
     candleSeries.attachPrimitive(trend);
     api.trend = trend;
+    const measurePrim = new MeasurePrimitive({ chart, series: candleSeries });
+    candleSeries.attachPrimitive(measurePrim);
+    api.measure = measurePrim;
     const renderTrend = () => trend.setData(linesRef.current, pendingRef.current, hoveredRef.current);
+    const renderMeasure = () => measurePrim.setData(measureRef.current);
     renderTrend();
+    renderMeasure();
+
+    // {time, price} at a crosshair/click param, or null if off a bar
+    const pointAt = (param) => {
+      if (!param.point) return null;
+      const price = candleSeries.coordinateToPrice(param.point.y);
+      const time = param.time ?? null;
+      return price != null && time != null ? { time, price } : null;
+    };
 
     // legend (updated on hover + on live ticks)
     const setLegend = (bar) => {
@@ -239,43 +263,55 @@ export default function Chart({
       const bar = param?.seriesData?.get(candleSeries);
       setLegend(bar || dataRef.current[dataRef.current.length - 1]);
 
-      if (!param.point) {
-        if (hoveredRef.current) { hoveredRef.current = null; renderTrend(); }
-        return;
-      }
-      if (drawModeRef.current) {
-        if (pendingStartRef.current) {
-          const price = candleSeries.coordinateToPrice(param.point.y);
-          const time = param.time ?? null;
-          if (price != null && time != null) {
-            pendingRef.current = { p1: pendingStartRef.current, p2: { time, price } };
-            renderTrend();
-          }
+      const t = toolRef.current;
+      if (t === 'trend') {
+        const pt = pointAt(param);
+        if (pendingStartRef.current && pt) {
+          pendingRef.current = { p1: pendingStartRef.current, p2: pt };
+          renderTrend();
+        }
+      } else if (t === 'measure') {
+        const pt = pointAt(param);
+        if (measureStartRef.current && pt) {
+          measureRef.current = makeMeasurement(measureStartRef.current, pt, dataRef.current);
+          renderMeasure();
         }
       } else {
-        const id = nearestLine(chart, candleSeries, linesRef.current, param.point.x, param.point.y, 6);
+        const id = param.point
+          ? nearestLine(chart, candleSeries, linesRef.current, param.point.x, param.point.y, 6)
+          : null;
         if (id !== hoveredRef.current) { hoveredRef.current = id; renderTrend(); }
       }
     });
 
     chart.subscribeClick((param) => {
-      if (!param.point) return;
-      if (drawModeRef.current) {
-        const price = candleSeries.coordinateToPrice(param.point.y);
-        const time = param.time ?? null;
-        if (price == null || time == null) return;
+      const t = toolRef.current;
+      if (t === 'trend') {
+        const pt = pointAt(param);
+        if (!pt) return;
         if (!pendingStartRef.current) {
-          pendingStartRef.current = { time, price };
-          pendingRef.current = { p1: pendingStartRef.current, p2: { time, price } };
+          pendingStartRef.current = pt;
+          pendingRef.current = { p1: pt, p2: pt };
           renderTrend();
         } else {
-          const created = { id: newId(), p1: pendingStartRef.current, p2: { time, price } };
+          const created = { id: newId(), p1: pendingStartRef.current, p2: pt };
           pendingStartRef.current = null;
           pendingRef.current = null;
           renderTrend();
           onAddLineRef.current?.(created);
         }
-      } else {
+      } else if (t === 'measure') {
+        const pt = pointAt(param);
+        if (!pt) return;
+        if (!measureStartRef.current) {
+          measureStartRef.current = pt;
+          measureRef.current = makeMeasurement(pt, pt, dataRef.current);
+        } else {
+          measureRef.current = makeMeasurement(measureStartRef.current, pt, dataRef.current);
+          measureStartRef.current = null;
+        }
+        renderMeasure();
+      } else if (param.point) {
         const id = nearestLine(chart, candleSeries, linesRef.current, param.point.x, param.point.y, 6);
         if (id) onDeleteLineRef.current?.(id);
       }
@@ -312,17 +348,23 @@ export default function Chart({
     apiRef.current?.trend?.setData(lines || [], pendingRef.current, hoveredRef.current);
   }, [lines]);
 
-  // ---- entering/leaving draw mode: reset in-progress state + cursor ----
+  // ---- switching tools: clear the other tool's in-progress state + cursor ----
   useEffect(() => {
-    if (!drawMode) {
+    const api = apiRef.current;
+    if (tool !== 'trend') {
       pendingStartRef.current = null;
       pendingRef.current = null;
-      apiRef.current?.trend?.setData(linesRef.current, null, hoveredRef.current);
+      api?.trend?.setData(linesRef.current, null, hoveredRef.current);
+    }
+    if (tool !== 'measure') {
+      measureStartRef.current = null;
+      measureRef.current = null;
+      api?.measure?.setData(null);
     }
     if (containerRef.current) {
-      containerRef.current.style.cursor = drawMode ? 'crosshair' : '';
+      containerRef.current.style.cursor = tool === 'none' ? '' : 'crosshair';
     }
-  }, [drawMode]);
+  }, [tool]);
 
   return (
     <div className="chart-wrap">

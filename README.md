@@ -14,11 +14,13 @@ proxy dos dados da **Binance** e (opcionalmente) os persiste em **PostgreSQL**.
   (localStorage) e restaurados no reload — com botão de restaurar padrões
 - ⏱️ **Timeframes**: 1m · 5m · 15m · 1h · 4h · 1d
 - 📈 Indicadores calculados no browser (recalculam na hora):
-  - **SMA** e **EMA** (períodos ajustáveis)
+  - **SMA** e **múltiplas EMAs** (adicione quantas quiser, cor e período por linha)
   - **Bandas de Bollinger**
   - **RSI** (com níveis 30/70)
   - **MACD** (linha, sinal e histograma, em painel próprio)
   - **Volume** (overlay colorido)
+- 📏 **Régua**: meça variação (%, absoluta), nº de barras e tempo entre dois pontos
+- ⭐ **Watchlist**: menu lateral com seus ativos favoritos e preço/variação 24h ao vivo
 - ⚡ **Tempo real** via WebSocket (stream de klines da Binance)
 - 🗄️ **PostgreSQL** como cache write-through — com *fallback automático* para
   modo proxy quando o banco não está disponível

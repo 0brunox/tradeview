@@ -120,8 +120,9 @@ body {
   border: 1px solid var(--border); border-radius: 5px; padding: 5px 7px; font-size: 12px;
 }
 
-/* ---------- stage / chart ---------- */
-.stage { position: relative; flex: 1; min-height: 0; }
+/* ---------- body: chart + watchlist ---------- */
+.body { display: flex; flex: 1; min-height: 0; }
+.stage { position: relative; flex: 1; min-height: 0; min-width: 0; }
 .chart-wrap { position: absolute; inset: 0; }
 .chart-container { position: absolute; inset: 0; }
 
@@ -140,3 +141,71 @@ body {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   color: var(--muted); text-align: center; max-width: 80%;
 }
+
+/* ---------- favorite star ---------- */
+.star {
+  background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--muted); cursor: pointer; font-size: 15px; padding: 5px 9px; line-height: 1;
+}
+.star:hover { color: var(--text); }
+.star-on { color: var(--accent); border-color: rgba(240,185,11,0.5); }
+
+/* ---------- EMA manager (settings) ---------- */
+.ema-manager {
+  display: flex; flex-direction: column; gap: 6px;
+  border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: var(--panel);
+}
+.ema-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.4px; }
+.ema-row { display: flex; align-items: center; gap: 6px; }
+.ema-row input[type="color"] {
+  width: 26px; height: 26px; padding: 0; border: 1px solid var(--border);
+  border-radius: 5px; background: none; cursor: pointer;
+}
+.ema-period {
+  width: 62px; background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px; padding: 5px 7px; font-size: 12px;
+}
+.ema-del {
+  width: 24px; height: 24px; border: 1px solid var(--border); border-radius: 5px;
+  background: transparent; color: var(--muted); cursor: pointer;
+}
+.ema-del:hover:not(:disabled) { color: var(--down); border-color: var(--down); }
+.ema-del:disabled { opacity: 0.35; cursor: default; }
+.ema-add {
+  background: transparent; color: var(--accent); border: 1px dashed rgba(240,185,11,0.5);
+  border-radius: 5px; padding: 5px; cursor: pointer; font-size: 12px; font-weight: 600;
+}
+
+/* ---------- watchlist sidebar ---------- */
+.watchlist {
+  width: 230px; flex: 0 0 230px; background: var(--panel);
+  border-left: 1px solid var(--border); overflow-y: auto;
+  display: flex; flex-direction: column;
+}
+.wl-head {
+  padding: 10px 12px; font-weight: 700; font-size: 12px; text-transform: uppercase;
+  letter-spacing: 0.4px; color: var(--muted); border-bottom: 1px solid var(--border);
+}
+.wl-empty { padding: 16px 12px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+.wl-list { list-style: none; margin: 0; padding: 4px; }
+.wl-item {
+  display: flex; align-items: center; gap: 8px; padding: 8px 8px; border-radius: 6px;
+  cursor: pointer; position: relative;
+}
+.wl-item:hover { background: var(--panel-2); }
+.wl-item.current { background: rgba(240,185,11,0.1); }
+.wl-item.current .wl-sym { color: var(--accent); }
+.wl-sym { font-weight: 600; font-size: 12px; flex: 1; }
+.wl-right { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.wl-price { font-size: 12px; color: var(--text); font-variant-numeric: tabular-nums; }
+.wl-chg { font-size: 11px; font-variant-numeric: tabular-nums; }
+.wl-chg.up { color: var(--up); }
+.wl-chg.down { color: var(--down); }
+.wl-remove {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: var(--panel); border: 1px solid var(--border); border-radius: 4px;
+  color: var(--muted); width: 18px; height: 18px; line-height: 1; cursor: pointer;
+  display: none;
+}
+.wl-item:hover .wl-remove { display: block; }
+.wl-remove:hover { color: var(--down); border-color: var(--down); }

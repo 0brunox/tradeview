@@ -1,35 +1,48 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Toolbar from './components/Toolbar.jsx';
 import Chart from './components/Chart.jsx';
+import Watchlist from './components/Watchlist.jsx';
 import { fetchCandles } from './api/rest.js';
 import { createLiveClient } from './api/ws.js';
 import { loadState, saveState } from './lib/storage.js';
 import { API_BASE, IS_DIRECT } from './api/config.js';
 
 const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '1d'];
+const EMA_COLORS = ['#42a5f5', '#ff9800', '#ab47bc', '#26c6da', '#ec407a', '#9ccc65'];
 
-const DEFAULT_INDICATORS = {
-  sma: { on: true, period: 20 },
-  ema: { on: true, period: 21 },
-  boll: { on: false, period: 20, mult: 2 },
-  volume: { on: true },
-  rsi: { on: true, period: 14 },
-  macd: { on: false, fast: 12, slow: 26, signal: 9 },
-};
+function makeDefaults() {
+  return {
+    sma: { on: true, period: 20 },
+    ema: {
+      on: true,
+      lines: [
+        { id: 'ema-9', period: 9, color: '#42a5f5' },
+        { id: 'ema-21', period: 21, color: '#ff9800' },
+      ],
+    },
+    boll: { on: false, period: 20, mult: 2 },
+    volume: { on: true },
+    rsi: { on: true, period: 14 },
+    macd: { on: false, fast: 12, slow: 26, signal: 9 },
+  };
+}
 
-// Merge stored indicator config over defaults so new indicators/fields added
-// later still get sensible values.
+// Merge stored indicator config over defaults, migrating the old single-EMA shape.
 function mergeIndicators(stored) {
-  if (!stored || typeof stored !== 'object') return DEFAULT_INDICATORS;
-  const out = {};
-  for (const key of Object.keys(DEFAULT_INDICATORS)) {
-    out[key] = { ...DEFAULT_INDICATORS[key], ...(stored[key] ?? {}) };
+  const out = makeDefaults();
+  if (!stored || typeof stored !== 'object') return out;
+  for (const key of Object.keys(out)) {
+    out[key] = { ...out[key], ...(stored[key] ?? {}) };
+  }
+  const se = stored.ema;
+  if (se) {
+    if (Array.isArray(se.lines)) out.ema.lines = se.lines;
+    else if (typeof se.period === 'number') out.ema.lines = [{ id: 'ema-1', period: se.period, color: EMA_COLORS[0] }];
   }
   return out;
 }
 
 export default function App() {
-  // load persisted layout once
   const persistedRef = useRef(null);
   if (persistedRef.current === null) persistedRef.current = loadState();
   const persisted = persistedRef.current;
@@ -40,10 +53,12 @@ export default function App() {
   );
   const [candles, setCandles] = useState([]);
   const [indicators, setIndicators] = useState(() => mergeIndicators(persisted.indicators));
-  const [drawings, setDrawings] = useState(persisted.drawings ?? {}); // { "SYMBOL:tf": [line] }
-  const [drawMode, setDrawMode] = useState(false);
+  const [drawings, setDrawings] = useState(persisted.drawings ?? {});
+  const [tool, setTool] = useState('none'); // 'none' | 'trend' | 'measure'
+  const [favorites, setFavorites] = useState(persisted.favorites ?? ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']);
+  const [wlCollapsed, setWlCollapsed] = useState(persisted.wlCollapsed ?? false);
   const [liveCandle, setLiveCandle] = useState(null);
-  const [loadStatus, setLoadStatus] = useState('loading'); // loading | ready | error
+  const [loadStatus, setLoadStatus] = useState('loading');
   const [wsStatus, setWsStatus] = useState('connecting');
   const [dbMode, setDbMode] = useState('');
   const [error, setError] = useState('');
@@ -54,30 +69,24 @@ export default function App() {
   symbolRef.current = symbol;
   intervalRef.current = interval;
 
-  // trend lines are scoped per market + timeframe
+  // trend lines scoped per market + timeframe
   const drawKey = `${symbol}:${interval}`;
   const lines = useMemo(() => drawings[drawKey] ?? [], [drawings, drawKey]);
 
-  const addLine = (line) =>
-    setDrawings((d) => ({ ...d, [drawKey]: [...(d[drawKey] ?? []), line] }));
-  const deleteLine = (id) =>
-    setDrawings((d) => ({ ...d, [drawKey]: (d[drawKey] ?? []).filter((l) => l.id !== id) }));
+  const addLine = (line) => setDrawings((d) => ({ ...d, [drawKey]: [...(d[drawKey] ?? []), line] }));
+  const deleteLine = (id) => setDrawings((d) => ({ ...d, [drawKey]: (d[drawKey] ?? []).filter((l) => l.id !== id) }));
   const clearLines = () => setDrawings((d) => ({ ...d, [drawKey]: [] }));
 
-  // persist layout whenever it changes
+  // persist layout
   useEffect(() => {
-    saveState({ symbol, interval, indicators, drawings });
-  }, [symbol, interval, indicators, drawings]);
+    saveState({ symbol, interval, indicators, drawings, favorites, wlCollapsed });
+  }, [symbol, interval, indicators, drawings, favorites, wlCollapsed]);
 
-  // one-time: backend health (backend mode only) + the live socket
+  // one-time: backend health (backend mode) + live socket
   useEffect(() => {
     if (!IS_DIRECT) {
-      fetch(`${API_BASE}/api/health`)
-        .then((r) => r.json())
-        .then((h) => setDbMode(h.db))
-        .catch(() => {});
+      fetch(`${API_BASE}/api/health`).then((r) => r.json()).then((h) => setDbMode(h.db)).catch(() => {});
     }
-
     const client = createLiveClient({
       onStatus: setWsStatus,
       onCandle: (candle, sym, iv) => {
@@ -90,37 +99,37 @@ export default function App() {
     return () => client.close();
   }, []);
 
-  // load historical candles on symbol / interval change
+  // load historical candles
   useEffect(() => {
     let cancelled = false;
     setLoadStatus('loading');
     setError('');
     fetchCandles(symbol, interval, 800)
-      .then((cs) => {
-        if (cancelled) return;
-        setCandles(cs);
-        setLoadStatus('ready');
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        setError(err.message);
-        setLoadStatus('error');
-      });
+      .then((cs) => { if (!cancelled) { setCandles(cs); setLoadStatus('ready'); } })
+      .catch((err) => { if (!cancelled) { setError(err.message); setLoadStatus('error'); } });
     return () => { cancelled = true; };
   }, [symbol, interval]);
 
-  // (re)subscribe the live stream on symbol / interval change
+  // (re)subscribe live stream
   useEffect(() => {
     liveRef.current?.subscribe(symbol, interval);
   }, [symbol, interval]);
 
-  const toggle = (key) =>
-    setIndicators((prev) => ({ ...prev, [key]: { ...prev[key], on: !prev[key].on } }));
+  const toggle = (key) => setIndicators((p) => ({ ...p, [key]: { ...p[key], on: !p[key].on } }));
+  const setPeriod = (key, field, value) => setIndicators((p) => ({ ...p, [key]: { ...p[key], [field]: value } }));
+  const resetIndicators = () => setIndicators(makeDefaults());
 
-  const setPeriod = (key, field, value) =>
-    setIndicators((prev) => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
+  const addEma = () => setIndicators((p) => {
+    const line = { id: `ema-${Date.now()}`, period: 50, color: EMA_COLORS[p.ema.lines.length % EMA_COLORS.length] };
+    return { ...p, ema: { ...p.ema, on: true, lines: [...p.ema.lines, line] } };
+  });
+  const removeEma = (id) => setIndicators((p) => ({ ...p, ema: { ...p.ema, lines: p.ema.lines.filter((l) => l.id !== id) } }));
+  const setEmaField = (id, field, value) => setIndicators((p) => ({
+    ...p, ema: { ...p.ema, lines: p.ema.lines.map((l) => (l.id === id ? { ...l, [field]: value } : l)) },
+  }));
 
-  const resetIndicators = () => setIndicators(DEFAULT_INDICATORS);
+  const selectTool = (t) => setTool((cur) => (cur === t ? 'none' : t));
+  const toggleFavorite = (sym) => setFavorites((f) => (f.includes(sym) ? f.filter((s) => s !== sym) : [...f, sym]));
 
   const status = loadStatus === 'loading' ? 'loading' : loadStatus === 'error' ? 'error' : wsStatus;
 
@@ -129,6 +138,8 @@ export default function App() {
       <Toolbar
         symbol={symbol}
         onSymbol={setSymbol}
+        isFavorite={favorites.includes(symbol)}
+        onToggleFavorite={() => toggleFavorite(symbol)}
         interval={interval}
         intervals={INTERVALS}
         onInterval={setInterval}
@@ -136,36 +147,51 @@ export default function App() {
         onToggle={toggle}
         onPeriod={setPeriod}
         onResetIndicators={resetIndicators}
-        drawMode={drawMode}
-        onToggleDraw={() => setDrawMode((v) => !v)}
-        onClearDrawings={clearLines}
+        onAddEma={addEma}
+        onRemoveEma={removeEma}
+        onEmaField={setEmaField}
+        tool={tool}
+        onSelectTool={selectTool}
         drawingCount={lines.length}
+        onClearDrawings={clearLines}
+        wlCollapsed={wlCollapsed}
+        onToggleWatchlist={() => setWlCollapsed((v) => !v)}
         status={status}
         dbMode={dbMode}
       />
 
-      <main className="stage">
-        {error && (
-          <div className="banner">
-            Falha ao carregar dados: {error}. Verifique se o backend está no ar em {API_BASE}.
-          </div>
-        )}
-        {candles.length > 0 ? (
-          <Chart
-            candles={candles}
-            indicators={indicators}
-            liveCandle={liveCandle}
-            symbol={symbol}
-            interval={interval}
-            drawMode={drawMode}
-            lines={lines}
-            onAddLine={addLine}
-            onDeleteLine={deleteLine}
-          />
-        ) : (
-          !error && <div className="banner">Carregando {symbol} · {interval}…</div>
-        )}
-      </main>
+      <div className="body">
+        <main className="stage">
+          {error && (
+            <div className="banner">
+              Falha ao carregar dados: {error}. Verifique a conexão / backend.
+            </div>
+          )}
+          {candles.length > 0 ? (
+            <Chart
+              candles={candles}
+              indicators={indicators}
+              liveCandle={liveCandle}
+              symbol={symbol}
+              interval={interval}
+              tool={tool}
+              lines={lines}
+              onAddLine={addLine}
+              onDeleteLine={deleteLine}
+            />
+          ) : (
+            !error && <div className="banner">Carregando {symbol} · {interval}…</div>
+          )}
+        </main>
+
+        <Watchlist
+          favorites={favorites}
+          current={symbol}
+          onSelect={setSymbol}
+          onRemove={toggleFavorite}
+          collapsed={wlCollapsed}
+        />
+      </div>
     </div>
   );
 }
