@@ -56,8 +56,19 @@ function chartOptions() {
 
 const line = (extra) => ({ lineWidth: 2, priceLineVisible: false, lastValueVisible: false, ...extra });
 
-function fmt(v) {
-  return v == null ? '—' : v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+// Decimal places suited to a price magnitude — micro-caps (e.g. PEPE) need many.
+function pricePrecision(p) {
+  const v = Math.abs(p ?? 0);
+  if (v === 0) return 2;
+  if (v >= 100) return 2;
+  if (v >= 1) return 4;
+  if (v >= 0.01) return 5;
+  if (v >= 0.0001) return 6;
+  return 8;
+}
+
+function fmt(v, prec = 2) {
+  return v == null ? '—' : v.toLocaleString('en-US', { maximumFractionDigits: prec });
 }
 
 function legendHtml(bar, symbol, interval) {
@@ -65,12 +76,13 @@ function legendHtml(bar, symbol, interval) {
   const up = bar.close >= bar.open;
   const chg = bar.open ? ((bar.close - bar.open) / bar.open) * 100 : 0;
   const col = up ? C.up : C.down;
+  const prec = pricePrecision(bar.close);
   return (
     `<span class="lg-sym">${symbol}</span><span class="lg-tf">${interval}</span>` +
-    `<span>O<b>${fmt(bar.open)}</b></span>` +
-    `<span>H<b>${fmt(bar.high)}</b></span>` +
-    `<span>L<b>${fmt(bar.low)}</b></span>` +
-    `<span>C<b>${fmt(bar.close)}</b></span>` +
+    `<span>O<b>${fmt(bar.open, prec)}</b></span>` +
+    `<span>H<b>${fmt(bar.high, prec)}</b></span>` +
+    `<span>L<b>${fmt(bar.low, prec)}</b></span>` +
+    `<span>C<b>${fmt(bar.close, prec)}</b></span>` +
     `<span style="color:${col}">${up ? '+' : ''}${chg.toFixed(2)}%</span>`
   );
 }
@@ -151,6 +163,10 @@ export default function Chart({
       wickDownColor: C.down,
     });
     candleSeries.setData(data.map(toBar));
+
+    // adaptive price precision so micro-priced tokens don't render as 0.00
+    const prec = pricePrecision(data.length ? data[data.length - 1].close : 1);
+    candleSeries.applyOptions({ priceFormat: { type: 'price', precision: prec, minMove: 1 / 10 ** prec } });
 
     const api = { chart, candleSeries, volumeSeries: null, sma: null, emas: null, boll: null, rsi: null, macdSet: null };
 

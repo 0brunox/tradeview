@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { fetchTickers } from '../api/binance.js';
+import { fetchTickers } from '../api/rest.js';
+import { bareSymbol } from '../api/source.js';
 
 function fmtPrice(p) {
   if (p == null || Number.isNaN(p)) return '—';
@@ -43,7 +44,10 @@ export default function Watchlist({ favorites, current, onSelect, onRemove, coll
                 className={`wl-item ${sym === current ? 'current' : ''}`}
                 onClick={() => onSelect(sym)}
               >
-                <span className="wl-sym">{sym}</span>
+                <span className="wl-sym">
+                  {bareSymbol(sym)}
+                  {sym.includes(':') && <span className="src-tag">{sym.slice(0, sym.indexOf(':'))}</span>}
+                </span>
                 <span className="wl-right">
                   <span className="wl-price">{t ? fmtPrice(t.price) : '…'}</span>
                   {t && (

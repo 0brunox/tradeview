@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { searchSymbols } from '../api/rest.js';
+import { parseSymbol } from '../api/source.js';
 
 export default function SymbolSearch({ value, onChange }) {
   const [open, setOpen] = useState(false);
@@ -72,7 +73,8 @@ export default function SymbolSearch({ value, onChange }) {
         title="Buscar símbolo"
       >
         <span className="si-search">🔍</span>
-        <span className="sym-name">{value}</span>
+        <span className="sym-name">{parseSymbol(value).symbol}</span>
+        {value.includes(':') && <span className="src-tag">{value.slice(0, value.indexOf(':'))}</span>}
         <span className="sym-caret">▾</span>
       </button>
 
@@ -95,7 +97,10 @@ export default function SymbolSearch({ value, onChange }) {
                 onMouseEnter={() => setActive(idx)}
                 onMouseDown={(e) => { e.preventDefault(); pick(r.symbol); }}
               >
-                <span className="si-sym">{r.symbol}</span>
+                <span className="si-sym">
+                  {parseSymbol(r.symbol).symbol}
+                  {r.source === 'bybit' && <span className="src-tag">Bybit</span>}
+                </span>
                 <span className="si-pair">{r.baseAsset}/{r.quoteAsset}</span>
               </li>
             ))}

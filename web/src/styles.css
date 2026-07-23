@@ -67,6 +67,13 @@ body {
 .symbol-item.active { background: var(--panel-2); }
 .symbol-item.current .si-sym { color: var(--accent); }
 .symbol-item .si-sym { font-weight: 700; font-size: 13px; }
+
+/* exchange-source badge (search, trigger, watchlist) */
+.src-tag {
+  margin-left: 6px; padding: 1px 5px; border-radius: 3px;
+  font-size: 9px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase;
+  background: rgba(74, 163, 255, 0.18); color: #4aa3ff; vertical-align: middle;
+}
 .symbol-item .si-pair { color: var(--muted); font-size: 11px; }
 .symbol-empty { padding: 12px; color: var(--muted); text-align: center; }
 

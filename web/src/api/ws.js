@@ -1,5 +1,7 @@
 import { WS_URL, IS_DIRECT } from './config.js';
 import { BinanceLiveClient } from './binance.js';
+import { BybitLiveClient } from './bybit.js';
+import { parseSymbol } from './source.js';
 
 /**
  * Backend live-candle client (auto-reconnect). Talks to our Node /ws hub and
@@ -51,7 +53,34 @@ export class LiveClient {
   }
 }
 
-/** Returns the right live client for the configured data source. */
+/**
+ * Routes live subscriptions to the right exchange by symbol prefix.
+ * Binance (no prefix) goes through the configured source (backend hub or direct);
+ * Bybit (BYBIT:) always streams straight from Bybit and re-emits the full symbol.
+ */
+class RouterLiveClient {
+  constructor(opts = {}) {
+    this.onCandle = opts.onCandle ?? (() => {});
+    this.binance = IS_DIRECT ? new BinanceLiveClient(opts) : new LiveClient(opts);
+    this.bybit = new BybitLiveClient({
+      onStatus: opts.onStatus,
+      onCandle: (candle, sym, iv) => this.onCandle(candle, `BYBIT:${sym}`, iv),
+    });
+  }
+
+  subscribe(fullSymbol, interval) {
+    const { source, symbol } = parseSymbol(fullSymbol);
+    if (source === 'bybit') this.bybit.subscribe(symbol, interval);
+    else this.binance.subscribe(symbol, interval);
+  }
+
+  close() {
+    try { this.binance.close(); } catch { /* ignore */ }
+    try { this.bybit.close(); } catch { /* ignore */ }
+  }
+}
+
+/** Live client that routes across data sources by symbol prefix. */
 export function createLiveClient(opts) {
-  return IS_DIRECT ? new BinanceLiveClient(opts) : new LiveClient(opts);
+  return new RouterLiveClient(opts);
 }
