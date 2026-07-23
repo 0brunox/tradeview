@@ -26,6 +26,7 @@ function makeDefaults() {
     rsi: { on: true, period: 14 },
     macd: { on: false, fast: 12, slow: 26, signal: 9 },
     rsimtf: { on: false, period: 14, threshold: 50, overbought: 70, oversold: 30, pos: 'bottom-right', showValues: true },
+    liqheat: { on: false },
   };
 }
 

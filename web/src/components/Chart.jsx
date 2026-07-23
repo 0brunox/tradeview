@@ -15,6 +15,10 @@ import { macd } from '../indicators/macd.js';
 import { bollinger } from '../indicators/bollinger.js';
 import { TrendLinesPrimitive, nearestLine } from '../lib/trendPrimitive.js';
 import { MeasurePrimitive, makeMeasurement } from '../lib/measurePrimitive.js';
+import { LiqHeatmapPrimitive } from '../lib/liqHeatmapPrimitive.js';
+import { liquidationHeatmap } from '../indicators/liquidationHeatmap.js';
+import { fetchOpenInterestHist } from '../api/derivatives.js';
+import { parseSymbol } from '../api/source.js';
 
 const newId = () =>
   (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2));
@@ -260,6 +264,17 @@ export default function Chart({
     const measurePrim = new MeasurePrimitive({ chart, series: candleSeries });
     candleSeries.attachPrimitive(measurePrim);
     api.measure = measurePrim;
+
+    // estimated liquidation heatmap (pane 0, behind candles)
+    const liqHeat = new LiqHeatmapPrimitive({ chart, series: candleSeries });
+    candleSeries.attachPrimitive(liqHeat);
+    api.liqHeat = liqHeat;
+    if (indicators.liqheat?.on) {
+      const bare = parseSymbol(metaRef.current.symbol).symbol;
+      fetchOpenInterestHist(bare, '1h', 500)
+        .then((oi) => { if (apiRef.current === api) liqHeat.setData(liquidationHeatmap(oi)); })
+        .catch(() => { /* no Binance perp for this symbol — leave empty */ });
+    }
     const renderTrend = () => trend.setData(linesRef.current, pendingRef.current, hoveredRef.current);
     const renderMeasure = () => measurePrim.setData(measureRef.current);
     renderTrend();
@@ -392,6 +407,11 @@ export default function Chart({
   return (
     <div className="chart-wrap">
       <div ref={legendRef} className="legend" />
+      {indicators.liqheat?.on && (
+        <div className="liq-caption" title="Modelo a partir do Open Interest de futuros e faixas de alavancagem — não é dado de liquidação real (Coinglass).">
+          🔥 Liq. heatmap · estimativa
+        </div>
+      )}
       <div ref={containerRef} className="chart-container" />
     </div>
   );

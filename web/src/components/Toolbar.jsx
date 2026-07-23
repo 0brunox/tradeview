@@ -127,6 +127,7 @@ export default function Toolbar({
         <Chip active={i.rsi.on} onClick={() => onToggle('rsi')} title="Índice de Força Relativa">RSI {i.rsi.period}</Chip>
         <Chip active={i.macd.on} onClick={() => onToggle('macd')} title="MACD">MACD</Chip>
         <Chip active={i.rsimtf.on} onClick={() => onToggle('rsimtf')} title="Painel RSI multi-timeframe">RSI MTF</Chip>
+        <Chip active={i.liqheat.on} onClick={() => onToggle('liqheat')} title="Liquidation Heatmap (estimado via Open Interest de futuros — Binance perp)">🔥 Liq</Chip>
 
         <button
           type="button"
