@@ -3,6 +3,7 @@ import Toolbar from './components/Toolbar.jsx';
 import Chart from './components/Chart.jsx';
 import RsiPanel from './components/RsiPanel.jsx';
 import Watchlist from './components/Watchlist.jsx';
+import AiPanel from './components/AiPanel.jsx';
 import { fetchCandles } from './api/rest.js';
 import { createLiveClient } from './api/ws.js';
 import { loadState, saveState } from './lib/storage.js';
@@ -60,6 +61,7 @@ export default function App() {
   const [tool, setTool] = useState('none'); // 'none' | 'trend' | 'measure'
   const [favorites, setFavorites] = useState(persisted.favorites ?? ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']);
   const [wlCollapsed, setWlCollapsed] = useState(persisted.wlCollapsed ?? false);
+  const [aiOpen, setAiOpen] = useState(false);
   const [liveCandle, setLiveCandle] = useState(null);
   const [loadStatus, setLoadStatus] = useState('loading');
   const [wsStatus, setWsStatus] = useState('connecting');
@@ -159,6 +161,8 @@ export default function App() {
         onClearDrawings={clearLines}
         wlCollapsed={wlCollapsed}
         onToggleWatchlist={() => setWlCollapsed((v) => !v)}
+        aiOpen={aiOpen}
+        onToggleAi={() => setAiOpen((v) => !v)}
         status={status}
         dbMode={dbMode}
       />
@@ -199,6 +203,15 @@ export default function App() {
             />
           )}
         </main>
+
+        <AiPanel
+          open={aiOpen}
+          onClose={() => setAiOpen(false)}
+          symbol={symbol}
+          interval={interval}
+          candles={candles}
+          rsiPeriod={indicators.rsi.period}
+        />
 
         <Watchlist
           favorites={favorites}

@@ -11,6 +11,8 @@ export const config = {
   binanceWs: stripSlash(process.env.BINANCE_WS ?? 'wss://stream.binance.com:9443'),
   databaseUrl: process.env.DATABASE_URL ?? '',
   dbEnabled: (process.env.DB_ENABLED ?? 'true').toLowerCase() !== 'false',
+  // Vazio = rota /api/analyze responde 503 e o botão de IA fica desabilitado.
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY ?? '',
 };
 
 // Timeframes we accept and forward to Binance (Binance interval strings).

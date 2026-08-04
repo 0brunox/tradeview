@@ -122,6 +122,27 @@ export async function fetchTickers(symbols) {
   }
 }
 
+// Estatísticas 24h completas de um símbolo (spot) — usadas pela análise de IA.
+// → { price, changePct, high, low, volume, quoteVolume, weightedAvg } ou null.
+export async function fetchTicker24h(symbol) {
+  try {
+    const res = await fetch(`${BINANCE_REST}/api/v3/ticker/24hr?symbol=${encodeURIComponent(symbol)}`);
+    if (!res.ok) return null;
+    const r = await res.json();
+    return {
+      price: +r.lastPrice,
+      changePct: +r.priceChangePercent,
+      high: +r.highPrice,
+      low: +r.lowPrice,
+      volume: +r.volume,
+      quoteVolume: +r.quoteVolume,
+      weightedAvg: +r.weightedAvgPrice,
+    };
+  } catch {
+    return null;
+  }
+}
+
 // --- live klines straight from the Binance stream ---
 export class BinanceLiveClient {
   constructor({ onCandle, onStatus } = {}) {

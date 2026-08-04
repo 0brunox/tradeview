@@ -4,6 +4,7 @@ import { createServer } from 'node:http';
 import { config } from './config.js';
 import { initDb } from './db/pool.js';
 import apiRouter from './routes/api.js';
+import analyzeRouter from './routes/analyze.js';
 import { attachWsHub } from './ws/hub.js';
 
 async function main() {
@@ -13,6 +14,7 @@ async function main() {
   app.use(cors({ origin: config.webOrigin }));
   app.use(express.json());
   app.use('/api', apiRouter);
+  app.use('/api', analyzeRouter);
   app.get('/', (_req, res) => res.json({ name: 'tradeview-server', ws: '/ws', api: '/api' }));
 
   const server = createServer(app);

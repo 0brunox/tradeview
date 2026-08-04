@@ -7,5 +7,9 @@ export const IS_DIRECT = DATA_SOURCE === 'binance';
 export const API_BASE = import.meta.env.VITE_API_BASE ?? 'http://localhost:4000';
 export const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:4000/ws';
 
+// Endpoint da análise de IA. Em modo direto (build da Vercel) a function mora
+// na mesma origem do site; em modo backend, no servidor Node local.
+export const AI_BASE = IS_DIRECT ? '' : API_BASE;
+
 export const BINANCE_REST = import.meta.env.VITE_BINANCE_REST ?? 'https://api.binance.com';
 export const BINANCE_WS = import.meta.env.VITE_BINANCE_WS ?? 'wss://stream.binance.com:9443';

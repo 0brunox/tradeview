@@ -41,6 +41,7 @@ export default function Toolbar({
   tool, onSelectTool,
   drawingCount, onClearDrawings,
   wlCollapsed, onToggleWatchlist,
+  aiOpen, onToggleAi,
   status, dbMode,
 }) {
   const [showSettings, setShowSettings] = useState(false);
@@ -103,6 +104,15 @@ export default function Toolbar({
         </div>
 
         <div className="spacer" />
+
+        <button
+          type="button"
+          className={`tf ai-toggle ${aiOpen ? 'tf-on' : ''}`}
+          onClick={onToggleAi}
+          title="Relatório de análise técnica gerado por IA para o ativo/timeframe atual"
+        >
+          🤖 Análise IA
+        </button>
 
         <button
           type="button"
