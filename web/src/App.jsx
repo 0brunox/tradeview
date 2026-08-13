@@ -4,6 +4,8 @@ import Chart from './components/Chart.jsx';
 import RsiPanel from './components/RsiPanel.jsx';
 import Watchlist from './components/Watchlist.jsx';
 import AiPanel from './components/AiPanel.jsx';
+import IctPanel from './components/IctPanel.jsx';
+import { buildIctContext } from './indicators/ict/index.js';
 import { fetchCandles } from './api/rest.js';
 import { createLiveClient } from './api/ws.js';
 import { loadState, saveState } from './lib/storage.js';
@@ -28,6 +30,18 @@ function makeDefaults() {
     macd: { on: false, fast: 12, slow: 26, signal: 9 },
     rsimtf: { on: false, period: 14, threshold: 50, overbought: 70, oversold: 30, pos: 'bottom-right', showValues: true },
     liqheat: { on: false },
+    // Suíte ICT / Smart Money: `on` liga o conjunto, os demais escolhem as camadas.
+    ict: {
+      on: false,
+      structure: true,
+      fvg: true,
+      ob: true,
+      liquidity: true,
+      range: true,
+      sessions: true,
+      panel: true,
+      pos: 'top-right',
+    },
   };
 }
 
@@ -56,6 +70,9 @@ export default function App() {
     INTERVALS.includes(persisted.interval) ? persisted.interval : '1h',
   );
   const [candles, setCandles] = useState([]);
+  // Ativo/timeframe a que os candles carregados pertencem. Sem isso não dá para
+  // saber se `candles` já é do par selecionado ou ainda é do anterior.
+  const [candlesOf, setCandlesOf] = useState({ symbol: null, interval: null });
   const [indicators, setIndicators] = useState(() => mergeIndicators(persisted.indicators));
   const [drawings, setDrawings] = useState(persisted.drawings ?? {});
   const [tool, setTool] = useState('none'); // 'none' | 'trend' | 'measure'
@@ -73,6 +90,34 @@ export default function App() {
   const intervalRef = useRef(interval);
   symbolRef.current = symbol;
   intervalRef.current = interval;
+
+  // Ao trocar de par, o tick do WebSocket novo costuma chegar ANTES do histórico
+  // REST — e como o candle do par novo tem o mesmo `time` do candle atual do par
+  // antigo, uma fusão ingênua produziria um array híbrido (histórico de um ativo
+  // com o preço de outro). Só tratamos os candles como utilizáveis quando eles
+  // já são do par/timeframe selecionado.
+  const dataReady = candlesOf.symbol === symbol && candlesOf.interval === interval;
+
+  // Candles com a vela em formação já aplicada. O Chart faz essa fusão
+  // internamente para atualizar as séries, mas a leitura ICT é compartilhada
+  // com o painel — então ela é montada aqui, uma vez, e desce para os dois.
+  const mergedCandles = useMemo(() => {
+    if (!dataReady || !candles.length || !liveCandle) return candles;
+    const { candle, symbol: s, interval: iv } = liveCandle;
+    if (s !== symbol || iv !== interval) return candles;
+    const last = candles[candles.length - 1];
+    if (candle.time < last.time) return candles;
+    return candle.time === last.time
+      ? [...candles.slice(0, -1), candle]
+      : [...candles, candle];
+  }, [dataReady, candles, liveCandle, symbol, interval]);
+
+  // O cálculo pesado é memorizado por candle fechado dentro de buildIctContext,
+  // então recalcular a cada tick custa só a camada dependente do preço.
+  const ictContext = useMemo(
+    () => (indicators.ict.on && dataReady ? buildIctContext(mergedCandles, { symbol, interval }) : null),
+    [indicators.ict.on, dataReady, mergedCandles, symbol, interval],
+  );
 
   // trend lines scoped per market + timeframe
   const drawKey = `${symbol}:${interval}`;
@@ -110,7 +155,12 @@ export default function App() {
     setLoadStatus('loading');
     setError('');
     fetchCandles(symbol, interval, 800)
-      .then((cs) => { if (!cancelled) { setCandles(cs); setLoadStatus('ready'); } })
+      .then((cs) => {
+        if (cancelled) return;
+        setCandles(cs);
+        setCandlesOf({ symbol, interval });
+        setLoadStatus('ready');
+      })
       .catch((err) => { if (!cancelled) { setError(err.message); setLoadStatus('error'); } });
     return () => { cancelled = true; };
   }, [symbol, interval]);
@@ -178,9 +228,10 @@ export default function App() {
             <Chart
               candles={candles}
               indicators={indicators}
-              liveCandle={liveCandle}
+              liveCandle={dataReady ? liveCandle : null}
               symbol={symbol}
               interval={interval}
+              ictContext={ictContext}
               tool={tool}
               lines={lines}
               onAddLine={addLine}
@@ -188,6 +239,14 @@ export default function App() {
             />
           ) : (
             !error && <div className="banner">Carregando {symbol} · {interval}…</div>
+          )}
+
+          {indicators.ict.on && indicators.ict.panel && (
+            <IctPanel
+              ict={ictContext}
+              position={indicators.ict.pos}
+              onClose={() => setPeriod('ict', 'panel', false)}
+            />
           )}
 
           {indicators.rsimtf.on && (
@@ -209,7 +268,7 @@ export default function App() {
           onClose={() => setAiOpen(false)}
           symbol={symbol}
           interval={interval}
-          candles={candles}
+          candles={dataReady ? candles : []}
           rsiPeriod={indicators.rsi.period}
         />
 

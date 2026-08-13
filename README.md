@@ -20,6 +20,9 @@ proxy dos dados da **Binance** e (opcionalmente) os persiste em **PostgreSQL**.
   - **MACD** (linha, sinal e histograma, em painel próprio)
   - **KDJ** e **pivôs/swings** (calculados para a análise de IA)
   - **Volume** (overlay colorido)
+- 📐 **Suíte ICT / Smart Money Concepts**: estrutura (BOS/CHoCH), Fair Value Gaps,
+  order blocks, pools de liquidez, premium/discount com OTE e killzones —
+  desenhados no gráfico e resumidos num painel de viés
 - 📏 **Régua**: meça variação (%, absoluta), nº de barras e tempo entre dois pontos
 - 🤖 **Análise por IA**: painel lateral com um relatório técnico do ativo/timeframe
   atual (panorama, leitura combinada dos indicadores, fluxo de derivativos, níveis
@@ -50,9 +53,10 @@ tradeview/
    │  └─ _analysis.js        # validação + prompt (compartilhado com o server/)
    └─ src/
       ├─ App.jsx             # estado, fetch, real-time, persistência
-      ├─ components/         # Chart.jsx + Toolbar.jsx + SymbolSearch.jsx + AiPanel.jsx
+      ├─ components/         # Chart.jsx + Toolbar.jsx + SymbolSearch.jsx + AiPanel.jsx + IctPanel.jsx
       ├─ indicators/         # sma, ema, rsi, macd, bollinger, kdj, levels
-      ├─ lib/                # storage.js, trendPrimitive.js, snapshot.js, markdown.js
+      │  └─ ict/             # estrutura, fvg, order blocks, liquidez, range, sessões
+      ├─ lib/                # storage.js, trendPrimitive.js, ictPrimitive.js, snapshot.js, markdown.js
       └─ api/                # cliente REST + WebSocket + ai.js
 ```
 
@@ -99,6 +103,38 @@ Abra `http://localhost:5173`.
 As linhas ficam salvas por **ativo + timeframe** no navegador (localStorage) e
 reaparecem no reload.
 
+## Suíte ICT / Smart Money Concepts
+
+O chip **📐 ICT** liga um conjunto de leituras baseadas no currículo do
+[2022 ICT Mentorship](https://www.youtube.com/playlist?list=PLVgHx4Z63paYiFGQ56PjTF1PGePL3r69s)
+(The Inner Circle Trader). Com a suíte ligada aparece uma segunda linha de chips
+para escolher as camadas:
+
+| Camada | O que marca no gráfico |
+|---|---|
+| **Estrutura** | `BOS` (rompimento a favor da tendência) e `CHoCH`/MSS (contra ela). `⚡` = rompimento com *displacement* |
+| **FVG** | Fair Value Gaps ainda abertos (BISI/SIBI), com a *consequent encroachment* (50%) no meio |
+| **Order Blocks** | Último candle oposto antes da perna que rompeu a estrutura. `BRK` = breaker (bloco perdido, polaridade invertida) |
+| **Liquidez** | Pools de stops (BSL acima / SSL abaixo). `EQH ×n` / `EQL ×n` = topos ou fundos iguais; `✓` = já varrido |
+| **Premium/Discount** | Dealing range com equilíbrio em 50% e a zona **OTE** (retração 0.62–0.79) |
+| **Killzones** | Ásia, London Open, NY Open e London Close, em **horário de Nova York** |
+| **Painel** | Resumo flutuante do viés (posição ajustável em **⚙**) |
+
+Detalhes que valem saber:
+
+- Estrutura, gaps e blocos são confirmados **no fechamento** do candle — a vela em
+  formação não muda a leitura, só o preço atual (zona, distâncias, alvos).
+- As killzones seguem o **DST americano** (via `Intl`, sem biblioteca de fuso) e só
+  aparecem em timeframes de até **1h**: um candle de 4h atravessa killzones
+  inteiras, e sombreá-lo sugeriria uma precisão de horário que o timeframe não tem.
+- **Power of 3**: o range asiático é a acumulação, o primeiro lado dele a ser
+  varrido é a manipulação (*Judas Swing*), e o viés esperado é o **oposto** ao lado
+  varrido.
+- As tolerâncias (o que é displacement, o que conta como topo duplo) são relativas
+  ao range médio do ativo, não percentuais fixos — o mesmo código serve BTC e PEPE.
+
+> ⚠️ São ferramentas de leitura de gráfico, não sinais de compra e venda.
+
 ## Análise por IA
 
 O botão **🤖 Análise IA** abre um painel à direita com um relatório técnico do
@@ -106,11 +142,14 @@ ativo e timeframe atuais. O fluxo é:
 
 1. O **browser** monta um *snapshot* numérico do mercado — médias móveis
    (5/10/20/60/120 + EMA 9/21), MACD, Bollinger, RSI (incluindo multi-timeframe),
-   KDJ, pivôs e swings, volume, taxa de funding, Open Interest e os 40 candles
-   mais recentes. Tudo calculado localmente, como os demais indicadores.
+   KDJ, pivôs e swings, volume, taxa de funding, Open Interest, a **leitura ICT**
+   (estrutura, FVGs e order blocks abertos, liquidez, premium/discount, Power of 3)
+   e os 40 candles mais recentes. Tudo calculado localmente, como os demais
+   indicadores — o bloco ICT é o **mesmo objeto** que o gráfico desenha.
 2. Esse snapshot vai por `POST /api/analyze`, onde é **validado campo a campo**:
-   só números e símbolos/timeframes conhecidos passam. Nenhum texto livre do
-   cliente entra no prompt.
+   só números e símbolos/timeframes conhecidos passam, e cada rótulo do bloco ICT
+   (`BOS`, `discount`, `BSL`, `breaker`…) é conferido contra uma **lista fechada de
+   valores**. Nenhum texto livre do cliente entra no prompt.
 3. O servidor chama o **Claude** (`claude-opus-5`) e devolve o relatório em
    **streaming**, então o texto aparece conforme é escrito.
 

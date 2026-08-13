@@ -40,6 +40,70 @@ function numArray(arr, max = 10) {
   return arr.slice(0, max).map(n).filter((v) => v !== null);
 }
 
+// Campos textuais do bloco ICT. Nenhuma string do cliente é repassada: ou o
+// valor é um dos rótulos previstos, ou vira null. É o que mantém a garantia de
+// que o endpoint não serve como proxy de texto livre para o modelo.
+const enumOf = (allowed) => (v) => (allowed.includes(v) ? v : null);
+const bool = (v) => v === true;
+
+const asBias = enumOf(['bull', 'bear', 'neutral']);
+const asDir = enumOf(['bull', 'bear']);
+const asZone = enumOf(['premium', 'discount', 'equilibrium']);
+const asEventType = enumOf(['BOS', 'CHoCH']);
+const asFvgState = enumOf(['open', 'partial', 'filled']);
+const asObState = enumOf(['fresh', 'mitigated', 'broken']);
+const asObKind = enumOf(['ob', 'breaker']);
+const asPoolKind = enumOf(['BSL', 'SSL']);
+const asKillzone = enumOf(['asia', 'london', 'nyopen', 'nyclose']);
+const asPo3Phase = enumOf(['accumulation', 'manipulation', 'distribution']);
+const asJudasDir = enumOf(['up', 'down']);
+
+/** Bloco ICT: números por `n()`, textos por lista fechada, arrays limitados. */
+function sanitizeIct(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const list = (arr, max, fn) => (Array.isArray(arr) ? arr.slice(0, max).map(fn) : []);
+
+  return {
+    bias: asBias(raw.bias),
+    lastEvent: raw.lastEvent && typeof raw.lastEvent === 'object' ? {
+      type: asEventType(raw.lastEvent.type),
+      dir: asDir(raw.lastEvent.dir),
+      price: n(raw.lastEvent.price),
+      displacement: bool(raw.lastEvent.displacement),
+    } : null,
+    range: raw.range && typeof raw.range === 'object' ? {
+      ...nums(raw.range, ['high', 'low', 'equilibrium', 'pricePct', 'oteTop', 'oteBottom']),
+      zone: asZone(raw.range.zone),
+      legDir: asDir(raw.range.legDir),
+      inOte: bool(raw.range.inOte),
+    } : null,
+    fvgs: list(raw.fvgs, 8, (g) => ({
+      dir: asDir(g?.dir),
+      ...nums(g, ['top', 'bottom', 'ce']),
+      state: asFvgState(g?.state),
+    })),
+    orderBlocks: list(raw.orderBlocks, 8, (b) => ({
+      dir: asDir(b?.dir),
+      kind: asObKind(b?.kind),
+      ...nums(b, ['top', 'bottom']),
+      state: asObState(b?.state),
+    })),
+    liquidity: list(raw.liquidity, 8, (p) => ({
+      kind: asPoolKind(p?.kind),
+      ...nums(p, ['price', 'touches', 'distancePct']),
+      swept: bool(p?.swept),
+    })),
+    targetAbove: n(raw.targetAbove),
+    targetBelow: n(raw.targetBelow),
+    killzone: asKillzone(raw.killzone),
+    po3: raw.po3 && typeof raw.po3 === 'object' ? {
+      phase: asPo3Phase(raw.po3.phase),
+      judasDir: asJudasDir(raw.po3.judasDir),
+      bias: asDir(raw.po3.bias),
+    } : null,
+  };
+}
+
 export function sanitizeSnapshot(raw) {
   if (!raw || typeof raw !== 'object') throw new Error('snapshot ausente');
 
@@ -101,6 +165,7 @@ export function sanitizeSnapshot(raw) {
     derivatives: nums(raw.derivatives, [
       'fundingRatePct', 'markPrice', 'openInterestUsd', 'openInterestChangePct24h',
     ]),
+    ict: sanitizeIct(raw.ict),
     candles,
   };
 }
@@ -125,6 +190,13 @@ Lista com: Preço Atual, Variação 24h, Suporte Principal (S1 e S2), Resistênc
 ## Explicação Detalhada
 ### Análise Técnica Combinada
 Um item por indicador presente: Médias Móveis, MACD, Bandas de Bollinger, RSI (incluindo a leitura multi-timeframe), KDJ.
+### Leitura ICT / Smart Money
+Só inclua esta seção se \`ict\` não for null. Cubra, nesta ordem e só o que existir:
+estrutura (último BOS/CHoCH e se houve displacement), posição no dealing range
+(premium / discount / equilíbrio e a zona OTE), liquidez (para onde é o *draw on
+liquidity* — o pool mais provável de ser buscado — e o que já foi varrido), e os
+FVGs / order blocks ainda abertos que estejam mais perto do preço. Se houver
+\`po3\`, diga em que fase o pregão está e o que o Judas Swing sugere.
 ### Análise de Dados e Fluxo
 Taxa de funding, Open Interest e comportamento do volume.
 
@@ -133,6 +205,12 @@ Taxa de funding, Open Interest e comportamento do volume.
 - **Momento de Entrada**: zona de preço e a condição que a valida
 - **Stop Loss**: nível e o motivo técnico dele
 - **Preço Alvo**: alvos com o ganho percentual a partir do preço atual
+
+Quando \`ict\` existir, ancore entrada, stop e alvo nos níveis dele — entrada em
+FVG / order block / OTE, stop além do extremo que os invalida, alvo no pool de
+liquidez oposto — em vez de inventar níveis redondos. Se a leitura ICT
+contradisser os indicadores clássicos, diga isso abertamente em vez de escolher
+um lado em silêncio.
 
 ## Justificativa Final
 Um parágrafo amarrando a leitura e nomeando o principal risco da tese.
@@ -163,6 +241,20 @@ export function buildUserPrompt(snap) {
     '- `volume.ratioToAvg20`: volume do último candle dividido pela média de 20.',
     '- `derivatives.fundingRatePct`: taxa de funding do perp em % por período de 8h.',
     '- `candles`: os mais recentes, em ordem cronológica (t = epoch em segundos).',
+    '- `ict`: leitura Smart Money (null quando não há histórico suficiente).',
+    '  - `bias`/`lastEvent`: direção da estrutura e o último rompimento. `BOS` = a favor',
+    '    da direção vigente (continuação); `CHoCH` = contra ela (possível reversão).',
+    '    `displacement: true` = o candle do rompimento teve range bem acima da média.',
+    '  - `range`: dealing range. `pricePct` 0 = fundo, 1 = topo; `equilibrium` = 50%.',
+    '    `legDir` é a direção da perna de impulso, e a faixa `oteBottom`–`oteTop` é a',
+    '    OTE (retração 0.62–0.79): zona de COMPRA se legDir=bull, de VENDA se bear.',
+    '  - `fvgs`: Fair Value Gaps ainda abertos. `ce` = 50% do gap, o nível de reação.',
+    '  - `orderBlocks`: `kind: "breaker"` é um bloco que falhou e inverteu de polaridade.',
+    '  - `liquidity`: pools de stops. `touches > 1` = topos/fundos iguais (EQH/EQL),',
+    '    que concentram mais ordens. `swept: true` = a liquidez ali JÁ foi tomada.',
+    '  - `targetAbove`/`targetBelow`: os pools ainda intactos mais próximos de cada lado.',
+    '  - `killzone`: janela de NY ativa agora; `po3.phase`: fase do Power of 3, e',
+    '    `po3.bias` é o viés esperado DEPOIS do Judas Swing (contrário ao lado varrido).',
     '',
     'IMPORTANTE: o último candle ainda está em formação, então seu volume é',
     'parcial por construção. Não trate um `volume.ratioToAvg20` baixo como queda',

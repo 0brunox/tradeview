@@ -46,6 +46,8 @@ export default function Toolbar({
 }) {
   const [showSettings, setShowSettings] = useState(false);
   const i = indicators;
+  // As camadas ICT são campos booleanos do mesmo bloco, então `onPeriod` já serve.
+  const ictLayer = (field) => onPeriod('ict', field, !i.ict[field]);
 
   return (
     <header className="toolbar">
@@ -138,6 +140,7 @@ export default function Toolbar({
         <Chip active={i.macd.on} onClick={() => onToggle('macd')} title="MACD">MACD</Chip>
         <Chip active={i.rsimtf.on} onClick={() => onToggle('rsimtf')} title="Painel RSI multi-timeframe">RSI MTF</Chip>
         <Chip active={i.liqheat.on} onClick={() => onToggle('liqheat')} title="Liquidation Heatmap (estimado via Open Interest de futuros — Binance perp)">🔥 Liq</Chip>
+        <Chip active={i.ict.on} onClick={() => onToggle('ict')} title="Suíte ICT / Smart Money Concepts: estrutura, FVG, order blocks, liquidez, premium/discount e killzones">📐 ICT</Chip>
 
         <button
           type="button"
@@ -148,6 +151,19 @@ export default function Toolbar({
           ⚙
         </button>
       </div>
+
+      {i.ict.on && (
+        <div className="toolbar-row ict-row">
+          <span className="ict-row-label">ICT</span>
+          <Chip active={i.ict.structure} onClick={() => ictLayer('structure')} title="Rompimentos de estrutura: BOS (continuação) e CHoCH/MSS (reversão). ⚡ marca rompimento com displacement.">Estrutura</Chip>
+          <Chip active={i.ict.fvg} onClick={() => ictLayer('fvg')} title="Fair Value Gaps ainda abertos — o desequilíbrio de 3 candles (BISI / SIBI)">FVG</Chip>
+          <Chip active={i.ict.ob} onClick={() => ictLayer('ob')} title="Order Blocks e Breakers: último candle oposto antes da perna que rompeu a estrutura">Order Blocks</Chip>
+          <Chip active={i.ict.liquidity} onClick={() => ictLayer('liquidity')} title="Pools de liquidez (BSL/SSL), topos e fundos iguais (EQH/EQL) e sweeps já ocorridos">Liquidez</Chip>
+          <Chip active={i.ict.range} onClick={() => ictLayer('range')} title="Dealing range: premium acima dos 50%, discount abaixo, e a zona OTE (0.62–0.79)">Premium/Discount</Chip>
+          <Chip active={i.ict.sessions} onClick={() => ictLayer('sessions')} title="Killzones em horário de Nova York e o Judas Swing. Só aparece em timeframes de até 1h.">Killzones</Chip>
+          <Chip active={i.ict.panel} onClick={() => ictLayer('panel')} title="Painel flutuante com o resumo do viés ICT">Painel</Chip>
+        </div>
+      )}
 
       {showSettings && (
         <div className="settings">
@@ -212,6 +228,16 @@ export default function Toolbar({
               checked={i.rsimtf.showValues}
               onChange={(e) => onPeriod('rsimtf', 'showValues', e.target.checked)}
             />
+          </label>
+
+          <label className="num">
+            <span>ICT posição</span>
+            <select value={i.ict.pos} onChange={(e) => onPeriod('ict', 'pos', e.target.value)}>
+              <option value="top-left">Sup. esquerda</option>
+              <option value="top-right">Sup. direita</option>
+              <option value="bottom-left">Inf. esquerda</option>
+              <option value="bottom-right">Inf. direita</option>
+            </select>
           </label>
 
           <button type="button" className="reset-btn" onClick={onResetIndicators} title="Restaurar indicadores padrão">

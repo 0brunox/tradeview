@@ -173,6 +173,56 @@ body {
 .rsi-flag.ob { background: var(--accent); color: #10131a; }
 .rsi-flag.os { background: #4aa3ff; color: #10131a; }
 
+/* ---------- ICT / Smart Money ---------- */
+/* Sub-chips das camadas, visíveis só com a suíte ligada. */
+.ict-row { align-items: center; gap: 6px; }
+.ict-row-label {
+  font-size: 10px; font-weight: 800; letter-spacing: 1px;
+  color: var(--accent); text-transform: uppercase; padding-right: 2px;
+}
+
+.ict-panel {
+  position: absolute; z-index: 6;
+  background: rgba(18, 21, 29, 0.92); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 10px; min-width: 218px; max-width: 300px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  font-variant-numeric: tabular-nums; backdrop-filter: blur(2px);
+}
+.ict-top-left { top: 44px; left: 12px; }
+.ict-top-right { top: 12px; right: 12px; }
+.ict-bottom-left { bottom: 12px; left: 12px; }
+.ict-bottom-right { bottom: 12px; right: 12px; }
+
+.ict-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-bottom: 6px; font-size: 11px; color: var(--muted);
+  text-transform: uppercase; letter-spacing: 0.4px;
+}
+.ict-close {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  font-size: 15px; line-height: 1; padding: 0 2px;
+}
+.ict-close:hover { color: var(--text); }
+.ict-empty { font-size: 12px; color: var(--muted); }
+
+.ict-table { border-collapse: collapse; width: 100%; }
+.ict-table td { padding: 3px 4px; font-size: 12px; vertical-align: baseline; }
+.ict-table tr[title] { cursor: help; }
+.ict-key { color: var(--muted); font-weight: 600; padding-right: 10px; white-space: nowrap; }
+.ict-val { text-align: right; font-weight: 600; }
+.ict-sub { color: var(--muted); font-weight: 400; font-size: 11px; }
+.ict-sub em { font-style: normal; opacity: 0.75; }
+
+.ict-bull { color: var(--up); }
+.ict-bear { color: var(--down); }
+.ict-flat { color: var(--muted); }
+.ict-hot { color: var(--accent); }
+.ict-flag {
+  display: inline-block; margin-left: 5px; padding: 1px 4px; border-radius: 3px;
+  background: var(--accent); color: #10131a;
+  font-size: 9px; font-weight: 800; letter-spacing: 0.3px; vertical-align: middle;
+}
+
 /* ---------- body: chart + watchlist ---------- */
 .body { display: flex; flex: 1; min-height: 0; }
 .stage { position: relative; flex: 1; min-height: 0; min-width: 0; }

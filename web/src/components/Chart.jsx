@@ -16,6 +16,7 @@ import { bollinger } from '../indicators/bollinger.js';
 import { TrendLinesPrimitive, nearestLine } from '../lib/trendPrimitive.js';
 import { MeasurePrimitive, makeMeasurement } from '../lib/measurePrimitive.js';
 import { LiqHeatmapPrimitive } from '../lib/liqHeatmapPrimitive.js';
+import { IctPrimitive } from '../lib/ictPrimitive.js';
 import { liquidationHeatmap } from '../indicators/liquidationHeatmap.js';
 import { fetchOpenInterestHist } from '../api/derivatives.js';
 import { parseSymbol } from '../api/source.js';
@@ -99,7 +100,7 @@ function legendHtml(bar, symbol, interval) {
 }
 
 export default function Chart({
-  candles, indicators, liveCandle, symbol, interval,
+  candles, indicators, liveCandle, symbol, interval, ictContext = null,
   tool = 'none', lines = [], onAddLine, onDeleteLine,
 }) {
   const containerRef = useRef(null);
@@ -115,6 +116,8 @@ export default function Chart({
   toolRef.current = tool;
   const linesRef = useRef(lines);
   linesRef.current = lines || [];
+  const ictRef = useRef(ictContext); // latest ICT reading, for the rebuild closure
+  ictRef.current = ictContext;
   const onAddLineRef = useRef(onAddLine);
   onAddLineRef.current = onAddLine;
   const onDeleteLineRef = useRef(onDeleteLine);
@@ -275,6 +278,12 @@ export default function Chart({
         .then((oi) => { if (apiRef.current === api) liqHeat.setData(liquidationHeatmap(oi)); })
         .catch(() => { /* no Binance perp for this symbol — leave empty */ });
     }
+    // ICT / Smart Money overlay — zones behind the candles, labels on top
+    const ictPrim = new IctPrimitive({ chart, series: candleSeries });
+    candleSeries.attachPrimitive(ictPrim);
+    api.ict = ictPrim;
+    ictPrim.setData(indicators.ict?.on ? ictRef.current : null, indicators.ict ?? {});
+
     const renderTrend = () => trend.setData(linesRef.current, pendingRef.current, hoveredRef.current);
     const renderMeasure = () => measurePrim.setData(measureRef.current);
     renderTrend();
@@ -385,6 +394,12 @@ export default function Chart({
   useEffect(() => {
     apiRef.current?.trend?.setData(lines || [], pendingRef.current, hoveredRef.current);
   }, [lines]);
+
+  // ---- push the ICT reading (recomputed upstream on every tick) ----
+  useEffect(() => {
+    const ict = indicators.ict;
+    apiRef.current?.ict?.setData(ict?.on ? ictContext : null, ict ?? {});
+  }, [ictContext, indicators.ict]);
 
   // ---- switching tools: clear the other tool's in-progress state + cursor ----
   useEffect(() => {

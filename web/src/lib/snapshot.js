@@ -12,6 +12,7 @@ import { bollinger } from '../indicators/bollinger.js';
 import { rsi } from '../indicators/rsi.js';
 import { kdj } from '../indicators/kdj.js';
 import { pivotPoints, swingLevels, rangeExtremes } from '../indicators/levels.js';
+import { buildIctContext } from '../indicators/ict/index.js';
 
 // Timeframes do painel RSI multi-timeframe, reaproveitados aqui.
 const MTF = ['5m', '15m', '1h', '4h', '12h', '1d', '1w'];
@@ -106,6 +107,7 @@ export async function buildSnapshot({ fullSymbol, interval, candles, rsiPeriod =
   const avgVol20 = mean(volumes);
 
   const swings = swingLevels(candles, { lookback: 150, strength: 3, max: 4 });
+  const ict = buildIctContext(candles, { symbol: fullSymbol, interval });
 
   return {
     symbol: fullSymbol,
@@ -180,6 +182,46 @@ export async function buildSnapshot({ fullSymbol, interval, candles, rsiPeriod =
       markPrice: num(funding?.markPrice ?? null),
       openInterestUsd: num(oi?.oiUsd ?? null, 6),
       openInterestChangePct24h: num(oi?.changePct24h ?? null, 4),
+    },
+
+    // Leitura ICT / Smart Money — mesmo objeto que o gráfico desenha.
+    ict: ict && {
+      bias: ict.structure.bias,
+      lastEvent: ict.structure.last && {
+        type: ict.structure.last.type,
+        dir: ict.structure.last.dir,
+        price: num(ict.structure.last.price),
+        displacement: ict.structure.last.displacement,
+      },
+      range: ict.range && {
+        high: num(ict.range.high),
+        low: num(ict.range.low),
+        equilibrium: num(ict.range.equilibrium),
+        zone: ict.range.zone,
+        pricePct: num(ict.range.pricePct, 4),
+        legDir: ict.range.dir,
+        oteTop: num(ict.range.ote.top),
+        oteBottom: num(ict.range.ote.bottom),
+        inOte: ict.range.inOte,
+      },
+      fvgs: ict.fvgs.slice(-6).map((g) => ({
+        dir: g.dir, top: num(g.top), bottom: num(g.bottom), ce: num(g.ce), state: g.state,
+      })),
+      orderBlocks: ict.blocks.slice(-6).map((b) => ({
+        dir: b.dir, kind: b.kind, top: num(b.top), bottom: num(b.bottom), state: b.state,
+      })),
+      liquidity: ict.pools.slice(0, 6).map((p) => ({
+        kind: p.kind, price: num(p.price), touches: p.touches, swept: p.swept,
+        distancePct: num(p.distancePct, 4),
+      })),
+      targetAbove: num(ict.targets.above?.price ?? null),
+      targetBelow: num(ict.targets.below?.price ?? null),
+      killzone: ict.activeKillzone?.id ?? null,
+      po3: ict.po3 && {
+        phase: ict.po3.phase,
+        judasDir: ict.po3.judas?.dir ?? null,
+        bias: ict.po3.bias,
+      },
     },
 
     candles: candles.slice(-CANDLES_IN_PAYLOAD).map((c) => ({
