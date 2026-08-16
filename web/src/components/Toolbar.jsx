@@ -42,6 +42,7 @@ export default function Toolbar({
   drawingCount, onClearDrawings,
   wlCollapsed, onToggleWatchlist,
   aiOpen, onToggleAi,
+  alertsOpen, onToggleAlerts, armedAlerts = 0,
   status, dbMode,
 }) {
   const [showSettings, setShowSettings] = useState(false);
@@ -96,6 +97,14 @@ export default function Toolbar({
           </button>
           <button
             type="button"
+            className={`tf ${tool === 'alert' ? 'tf-on' : ''}`}
+            onClick={() => onSelectTool('alert')}
+            title="Alerta de preço: clique no gráfico na altura do preço desejado."
+          >
+            🔔 Alerta
+          </button>
+          <button
+            type="button"
             className="tf"
             onClick={onClearDrawings}
             disabled={!drawingCount}
@@ -106,6 +115,15 @@ export default function Toolbar({
         </div>
 
         <div className="spacer" />
+
+        <button
+          type="button"
+          className={`tf ${alertsOpen ? 'tf-on' : ''}`}
+          onClick={onToggleAlerts}
+          title="Alertas de preço: lista, criação e avisos"
+        >
+          🔔 Alertas{armedAlerts ? ` ${armedAlerts}` : ''}
+        </button>
 
         <button
           type="button"
@@ -212,7 +230,7 @@ export default function Toolbar({
           <Num label="MTF limiar" value={i.rsimtf.threshold} min={1} max={99} step={0.5} onChange={(v) => onPeriod('rsimtf', 'threshold', v)} />
           <Num label="MTF sobrecompra" value={i.rsimtf.overbought} min={50} max={100} step={0.5} onChange={(v) => onPeriod('rsimtf', 'overbought', v)} />
           <Num label="MTF sobrevenda" value={i.rsimtf.oversold} min={0} max={50} step={0.5} onChange={(v) => onPeriod('rsimtf', 'oversold', v)} />
-          <label className="num">
+          <label className="num" title="Canto onde o painel nasce. Arraste-o pelo título para posicionar livremente; duplo clique no título traz de volta para este canto.">
             <span>MTF posição</span>
             <select value={i.rsimtf.pos} onChange={(e) => onPeriod('rsimtf', 'pos', e.target.value)}>
               <option value="top-left">Sup. esquerda</option>
@@ -230,7 +248,7 @@ export default function Toolbar({
             />
           </label>
 
-          <label className="num">
+          <label className="num" title="Canto onde o painel nasce. Arraste-o pelo título para posicionar livremente; duplo clique no título traz de volta para este canto.">
             <span>ICT posição</span>
             <select value={i.ict.pos} onChange={(e) => onPeriod('ict', 'pos', e.target.value)}>
               <option value="top-left">Sup. esquerda</option>

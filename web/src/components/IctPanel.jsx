@@ -2,6 +2,8 @@
 //
 // Consome o MESMO objeto que o gráfico desenha (`buildIctContext`), então o que
 // está escrito aqui e o que está marcado nos candles nunca divergem.
+// O arraste fica em FloatingPanel; aqui só passam `xy` e `onMove`.
+import FloatingPanel from './FloatingPanel.jsx';
 
 const BIAS_LABEL = {
   bull: { text: 'Alta', cls: 'ict-bull' },
@@ -38,16 +40,28 @@ function Row({ label, children, title }) {
   );
 }
 
-export default function IctPanel({ ict, position = 'top-left', onClose }) {
+export default function IctPanel({ ict, position = 'top-left', xy = null, onMove, onClose }) {
+  const shell = {
+    className: 'ict-panel',
+    position,
+    xy,
+    onMove,
+    headClassName: 'ict-head',
+  };
+
   if (!ict) {
     return (
-      <div className={`ict-panel ict-${position}`}>
-        <div className="ict-head">
-          <span>ICT</span>
-          {onClose && <button type="button" className="ict-close" onClick={onClose}>×</button>}
-        </div>
+      <FloatingPanel
+        {...shell}
+        head={(
+          <>
+            <span>ICT</span>
+            {onClose && <button type="button" className="ict-close" onClick={onClose}>×</button>}
+          </>
+        )}
+      >
         <div className="ict-empty">Histórico insuficiente.</div>
-      </div>
+      </FloatingPanel>
     );
   }
 
@@ -58,12 +72,15 @@ export default function IctPanel({ ict, position = 'top-left', onClose }) {
   const swept = ict.pools.filter((p) => p.swept).length;
 
   return (
-    <div className={`ict-panel ict-${position}`}>
-      <div className="ict-head">
-        <span>ICT · viés</span>
-        {onClose && <button type="button" className="ict-close" onClick={onClose} title="Fechar painel">×</button>}
-      </div>
-
+    <FloatingPanel
+      {...shell}
+      head={(
+        <>
+          <span>ICT · viés</span>
+          {onClose && <button type="button" className="ict-close" onClick={onClose} title="Fechar painel">×</button>}
+        </>
+      )}
+    >
       <table className="ict-table">
         <tbody>
           <Row label="Estrutura" title="Direção definida pelo último rompimento de estrutura.">
@@ -164,6 +181,6 @@ export default function IctPanel({ ict, position = 'top-left', onClose }) {
           )}
         </tbody>
       </table>
-    </div>
+    </FloatingPanel>
   );
 }

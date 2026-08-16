@@ -37,6 +37,8 @@ const C = {
   level: '#4a5160',
   macd: '#42a5f5',
   signal: '#ff7043',
+  alert: '#f0b90b',
+  alertOff: '#5b6373',
 };
 
 // Lightweight-charts rejects histogram values outside ±(MAX_SAFE_INTEGER/100).
@@ -102,6 +104,7 @@ function legendHtml(bar, symbol, interval) {
 export default function Chart({
   candles, indicators, liveCandle, symbol, interval, ictContext = null,
   tool = 'none', lines = [], onAddLine, onDeleteLine,
+  alerts = [], onCreateAlert,
 }) {
   const containerRef = useRef(null);
   const legendRef = useRef(null);
@@ -122,6 +125,10 @@ export default function Chart({
   onAddLineRef.current = onAddLine;
   const onDeleteLineRef = useRef(onDeleteLine);
   onDeleteLineRef.current = onDeleteLine;
+  const alertsRef = useRef(alerts); // alertas do ativo aberto, desenhados como price lines
+  alertsRef.current = alerts || [];
+  const onCreateAlertRef = useRef(onCreateAlert);
+  onCreateAlertRef.current = onCreateAlert;
   const pendingStartRef = useRef(null); // first clicked point while drawing a trend line
   const pendingRef = useRef(null); // rubber-band trend line { p1, p2 }
   const hoveredRef = useRef(null); // id of hovered trend line
@@ -284,6 +291,37 @@ export default function Chart({
     api.ict = ictPrim;
     ictPrim.setData(indicators.ict?.on ? ictRef.current : null, indicators.ict ?? {});
 
+    // Alertas de preço: linhas horizontais da própria série, que já cuidam do
+    // rótulo no eixo e acompanham zoom/pan sem primitive dedicada.
+    api.alertLines = new Map(); // id -> { line, key }
+    api.syncAlerts = (list) => {
+      const seen = new Set();
+      for (const a of list) {
+        seen.add(a.id);
+        const key = `${a.price}|${a.status}`;
+        const cur = api.alertLines.get(a.id);
+        if (cur?.key === key) continue;
+        if (cur) candleSeries.removePriceLine(cur.line);
+        const armed = a.status === 'armed';
+        const priceLine = candleSeries.createPriceLine({
+          price: a.price,
+          color: armed ? C.alert : C.alertOff,
+          lineWidth: 1,
+          lineStyle: armed ? LineStyle.Dashed : LineStyle.Dotted,
+          axisLabelVisible: true,
+          title: armed ? '🔔' : '🔔 ✓',
+        });
+        api.alertLines.set(a.id, { line: priceLine, key });
+      }
+      for (const [id, v] of api.alertLines) {
+        if (!seen.has(id)) {
+          candleSeries.removePriceLine(v.line);
+          api.alertLines.delete(id);
+        }
+      }
+    };
+    api.syncAlerts(alertsRef.current);
+
     const renderTrend = () => trend.setData(linesRef.current, pendingRef.current, hoveredRef.current);
     const renderMeasure = () => measurePrim.setData(measureRef.current);
     renderTrend();
@@ -295,6 +333,15 @@ export default function Chart({
       const price = candleSeries.coordinateToPrice(param.point.y);
       const time = param.time ?? null;
       return price != null && time != null ? { time, price } : null;
+    };
+
+    // Só o preço, arredondado à precisão do ativo — para o alerta o eixo do
+    // tempo não importa, então vale clicar também à direita do último candle.
+    const priceAt = (param) => {
+      if (!param.point || (param.paneIndex != null && param.paneIndex !== 0)) return null;
+      const price = candleSeries.coordinateToPrice(param.point.y);
+      if (price == null || !Number.isFinite(price)) return null;
+      return Number(price.toFixed(pricePrecision(price)));
     };
 
     // legend (updated on hover + on live ticks)
@@ -347,6 +394,9 @@ export default function Chart({
           renderTrend();
           onAddLineRef.current?.(created);
         }
+      } else if (t === 'alert') {
+        const price = priceAt(param);
+        if (price != null) onCreateAlertRef.current?.(price);
       } else if (t === 'measure') {
         const pt = pointAt(param);
         if (!pt) return;
@@ -394,6 +444,11 @@ export default function Chart({
   useEffect(() => {
     apiRef.current?.trend?.setData(lines || [], pendingRef.current, hoveredRef.current);
   }, [lines]);
+
+  // ---- push alert changes (create / trigger / delete) to the price lines ----
+  useEffect(() => {
+    apiRef.current?.syncAlerts?.(alerts || []);
+  }, [alerts]);
 
   // ---- push the ICT reading (recomputed upstream on every tick) ----
   useEffect(() => {

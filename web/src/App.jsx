@@ -1,14 +1,20 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Toolbar from './components/Toolbar.jsx';
 import Chart from './components/Chart.jsx';
 import RsiPanel from './components/RsiPanel.jsx';
 import Watchlist from './components/Watchlist.jsx';
 import AiPanel from './components/AiPanel.jsx';
 import IctPanel from './components/IctPanel.jsx';
+import AlertsPanel from './components/AlertsPanel.jsx';
+import AlertToasts from './components/AlertToasts.jsx';
 import { buildIctContext } from './indicators/ict/index.js';
 import { fetchCandles } from './api/rest.js';
 import { createLiveClient } from './api/ws.js';
 import { loadState, saveState } from './lib/storage.js';
+import { makeAlert, rearmAlert, triggerAlert, fmtPrice } from './lib/alerts.js';
+import { useAlertWatcher } from './lib/useAlertWatcher.js';
+import { askNotificationPermission, notificationState, playAlertBeep, showNotification } from './lib/notify.js';
+import { bareSymbol } from './api/source.js';
 import { API_BASE, IS_DIRECT } from './api/config.js';
 
 const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '12h', '1d', '1w', '1M'];
@@ -28,7 +34,12 @@ function makeDefaults() {
     volume: { on: true },
     rsi: { on: true, period: 14 },
     macd: { on: false, fast: 12, slow: 26, signal: 9 },
-    rsimtf: { on: false, period: 14, threshold: 50, overbought: 70, oversold: 30, pos: 'bottom-right', showValues: true },
+    // `pos` é o canto de ancoragem do painel; `xy` guarda a posição livre depois
+    // que o usuário arrasta a janela (null = ainda ancorada no canto).
+    rsimtf: {
+      on: false, period: 14, threshold: 50, overbought: 70, oversold: 30,
+      pos: 'bottom-right', xy: null, showValues: true,
+    },
     liqheat: { on: false },
     // Suíte ICT / Smart Money: `on` liga o conjunto, os demais escolhem as camadas.
     ict: {
@@ -41,6 +52,7 @@ function makeDefaults() {
       sessions: true,
       panel: true,
       pos: 'top-right',
+      xy: null,
     },
   };
 }
@@ -79,6 +91,13 @@ export default function App() {
   const [favorites, setFavorites] = useState(persisted.favorites ?? ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']);
   const [wlCollapsed, setWlCollapsed] = useState(persisted.wlCollapsed ?? false);
   const [aiOpen, setAiOpen] = useState(false);
+  const [alerts, setAlerts] = useState(persisted.alerts ?? []);
+  // Preferências do painel de alertas (aberto, posição arrastada, som).
+  const [alertPrefs, setAlertPrefs] = useState(() => ({
+    open: false, pos: 'top-left', xy: null, sound: true, ...(persisted.alertPrefs ?? {}),
+  }));
+  const [toasts, setToasts] = useState([]); // avisos na tela dos alertas disparados
+  const [notifyPerm, setNotifyPerm] = useState(notificationState);
   const [liveCandle, setLiveCandle] = useState(null);
   const [loadStatus, setLoadStatus] = useState('loading');
   const [wsStatus, setWsStatus] = useState('connecting');
@@ -119,6 +138,11 @@ export default function App() {
     [indicators.ict.on, dataReady, mergedCandles, symbol, interval],
   );
 
+  // Preço atual do ativo aberto — base para a direção dos alertas novos.
+  const livePrice = mergedCandles.length && dataReady
+    ? mergedCandles[mergedCandles.length - 1].close
+    : null;
+
   // trend lines scoped per market + timeframe
   const drawKey = `${symbol}:${interval}`;
   const lines = useMemo(() => drawings[drawKey] ?? [], [drawings, drawKey]);
@@ -129,8 +153,8 @@ export default function App() {
 
   // persist layout
   useEffect(() => {
-    saveState({ symbol, interval, indicators, drawings, favorites, wlCollapsed });
-  }, [symbol, interval, indicators, drawings, favorites, wlCollapsed]);
+    saveState({ symbol, interval, indicators, drawings, favorites, wlCollapsed, alerts, alertPrefs });
+  }, [symbol, interval, indicators, drawings, favorites, wlCollapsed, alerts, alertPrefs]);
 
   // one-time: backend health (backend mode) + live socket
   useEffect(() => {
@@ -171,7 +195,12 @@ export default function App() {
   }, [symbol, interval]);
 
   const toggle = (key) => setIndicators((p) => ({ ...p, [key]: { ...p[key], on: !p[key].on } }));
-  const setPeriod = (key, field, value) => setIndicators((p) => ({ ...p, [key]: { ...p[key], [field]: value } }));
+  // Escolher um canto na barra também descarta a posição arrastada — senão a
+  // troca no seletor não teria efeito visível enquanto `xy` estivesse setado.
+  const setPeriod = (key, field, value) => setIndicators((p) => ({
+    ...p,
+    [key]: { ...p[key], [field]: value, ...(field === 'pos' ? { xy: null } : null) },
+  }));
   const resetIndicators = () => setIndicators(makeDefaults());
 
   const addEma = () => setIndicators((p) => {
@@ -185,6 +214,42 @@ export default function App() {
 
   const selectTool = (t) => setTool((cur) => (cur === t ? 'none' : t));
   const toggleFavorite = (sym) => setFavorites((f) => (f.includes(sym) ? f.filter((s) => s !== sym) : [...f, sym]));
+
+  // ---- alertas de preço ----
+  const soundOn = alertPrefs.sound;
+  const alertPref = (key, value) => setAlertPrefs((p) => ({ ...p, [key]: value }));
+
+  // Disparo: marca o alerta, mostra o aviso na tela, bipa e (se autorizado)
+  // manda a notificação do sistema — que é o que serve com a aba em segundo plano.
+  const handleTrigger = useCallback((alert, price) => {
+    const at = Date.now();
+    setAlerts((list) => list.map((a) => (a.id === alert.id ? { ...triggerAlert(a, price), triggeredAt: at } : a)));
+    setToasts((t) => [...t, { ...alert, triggeredPrice: price, triggeredAt: at, uid: `${alert.id}:${at}` }].slice(-4));
+    if (soundOn) playAlertBeep();
+    showNotification(
+      `🔔 ${bareSymbol(alert.symbol)} ${alert.dir === 'above' ? '▲' : '▼'} ${fmtPrice(alert.price)}`,
+      `${alert.note ? `${alert.note} · ` : ''}preço em ${fmtPrice(price)}`,
+      alert.id,
+    );
+  }, [soundOn]);
+
+  const alertPrices = useAlertWatcher({ alerts, liveCandle, onTrigger: handleTrigger });
+
+  const priceOf = (sym) => (sym === symbol ? livePrice : alertPrices[sym] ?? null);
+
+  const addAlert = (price, note = '') => {
+    if (!Number.isFinite(price) || price <= 0) return;
+    setAlerts((list) => [makeAlert({ symbol, price, refPrice: livePrice, note }), ...list]);
+    if (!alertPrefs.open) alertPref('open', true); // criado pelo gráfico: abre a lista como confirmação
+  };
+  const removeAlert = (id) => setAlerts((list) => list.filter((a) => a.id !== id));
+  const rearm = (id) => setAlerts((list) => list.map((a) => (a.id === id ? rearmAlert(a, priceOf(a.symbol)) : a)));
+  const clearTriggered = () => setAlerts((list) => list.filter((a) => a.status === 'armed'));
+  const dismissToast = useCallback((uid) => setToasts((t) => t.filter((x) => x.uid !== uid)), []);
+  const enableNotify = async () => setNotifyPerm(await askNotificationPermission());
+
+  const armedCount = alerts.filter((a) => a.status === 'armed').length;
+  const symbolAlerts = useMemo(() => alerts.filter((a) => a.symbol === symbol), [alerts, symbol]);
 
   const status = loadStatus === 'loading' ? 'loading' : loadStatus === 'error' ? 'error' : wsStatus;
 
@@ -213,6 +278,9 @@ export default function App() {
         onToggleWatchlist={() => setWlCollapsed((v) => !v)}
         aiOpen={aiOpen}
         onToggleAi={() => setAiOpen((v) => !v)}
+        alertsOpen={alertPrefs.open}
+        onToggleAlerts={() => alertPref('open', !alertPrefs.open)}
+        armedAlerts={armedCount}
         status={status}
         dbMode={dbMode}
       />
@@ -236,6 +304,8 @@ export default function App() {
               lines={lines}
               onAddLine={addLine}
               onDeleteLine={deleteLine}
+              alerts={dataReady ? symbolAlerts : []}
+              onCreateAlert={addAlert}
             />
           ) : (
             !error && <div className="banner">Carregando {symbol} · {interval}…</div>
@@ -245,6 +315,8 @@ export default function App() {
             <IctPanel
               ict={ictContext}
               position={indicators.ict.pos}
+              xy={indicators.ict.xy}
+              onMove={(xy) => setPeriod('ict', 'xy', xy)}
               onClose={() => setPeriod('ict', 'panel', false)}
             />
           )}
@@ -257,10 +329,36 @@ export default function App() {
               overbought={indicators.rsimtf.overbought}
               oversold={indicators.rsimtf.oversold}
               position={indicators.rsimtf.pos}
+              xy={indicators.rsimtf.xy}
+              onMove={(xy) => setPeriod('rsimtf', 'xy', xy)}
               showValues={indicators.rsimtf.showValues}
               liveCandle={liveCandle}
             />
           )}
+
+          {alertPrefs.open && (
+            <AlertsPanel
+              alerts={alerts}
+              symbol={symbol}
+              price={livePrice}
+              prices={alertPrices}
+              position={alertPrefs.pos}
+              xy={alertPrefs.xy}
+              onMove={(xy) => alertPref('xy', xy)}
+              onClose={() => alertPref('open', false)}
+              onCreate={addAlert}
+              onRemove={removeAlert}
+              onRearm={rearm}
+              onClearTriggered={clearTriggered}
+              onSelectSymbol={setSymbol}
+              sound={soundOn}
+              onToggleSound={(v) => alertPref('sound', v)}
+              notifyState={notifyPerm}
+              onEnableNotify={enableNotify}
+            />
+          )}
+
+          <AlertToasts items={toasts} onDismiss={dismissToast} onSelect={setSymbol} />
         </main>
 
         <AiPanel

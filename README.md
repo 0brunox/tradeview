@@ -23,6 +23,11 @@ proxy dos dados da **Binance** e (opcionalmente) os persiste em **PostgreSQL**.
 - 📐 **Suíte ICT / Smart Money Concepts**: estrutura (BOS/CHoCH), Fair Value Gaps,
   order blocks, pools de liquidez, premium/discount com OTE e killzones —
   desenhados no gráfico e resumidos num painel de viés
+- 🔔 **Alertas de preço**: crie pelo painel ou clicando no gráfico, com aviso na
+  tela, bipe e notificação do sistema — valem para qualquer par, mesmo o que não
+  está aberto no gráfico
+- 🪟 **Painéis flutuantes** (RSI multi-timeframe, ICT e alertas): arraste-os pelo
+  título para qualquer ponto do gráfico — a posição fica salva com o layout
 - 📏 **Régua**: meça variação (%, absoluta), nº de barras e tempo entre dois pontos
 - 🤖 **Análise por IA**: painel lateral com um relatório técnico do ativo/timeframe
   atual (panorama, leitura combinada dos indicadores, fluxo de derivativos, níveis
@@ -53,10 +58,10 @@ tradeview/
    │  └─ _analysis.js        # validação + prompt (compartilhado com o server/)
    └─ src/
       ├─ App.jsx             # estado, fetch, real-time, persistência
-      ├─ components/         # Chart.jsx + Toolbar.jsx + SymbolSearch.jsx + AiPanel.jsx + IctPanel.jsx
+      ├─ components/         # Chart.jsx + Toolbar.jsx + SymbolSearch.jsx + AiPanel.jsx + IctPanel.jsx + FloatingPanel.jsx + AlertsPanel.jsx
       ├─ indicators/         # sma, ema, rsi, macd, bollinger, kdj, levels
       │  └─ ict/             # estrutura, fvg, order blocks, liquidez, range, sessões
-      ├─ lib/                # storage.js, trendPrimitive.js, ictPrimitive.js, snapshot.js, markdown.js
+      ├─ lib/                # storage.js, trendPrimitive.js, ictPrimitive.js, snapshot.js, markdown.js, alerts.js
       └─ api/                # cliente REST + WebSocket + ai.js
 ```
 
@@ -103,6 +108,35 @@ Abra `http://localhost:5173`.
 As linhas ficam salvas por **ativo + timeframe** no navegador (localStorage) e
 reaparecem no reload.
 
+## Alertas de preço
+
+Duas formas de criar:
+
+- **🔔 Alertas** na barra abre o painel: digite o preço (e uma nota opcional) e
+  clique em **Criar**;
+- **🔔 Alerta** no grupo de ferramentas: clique no gráfico na altura do preço
+  desejado.
+
+A **direção é deduzida** do preço no momento da criação — alvo acima do mercado
+dispara na subida (▲), abaixo dispara na queda (▼). O alerta armado vira uma
+linha tracejada amarela no gráfico, com o preço no eixo; ao disparar ela fica
+cinza pontilhada e o alerta aparece marcado na lista, com **↻** para rearmar
+(a direção é recalculada pelo preço do momento).
+
+Quando dispara você recebe um aviso no topo do gráfico (clique nele para abrir o
+ativo), um bipe e — se autorizar em *ativar notificações* — uma notificação do
+sistema, que é o que funciona com a aba em segundo plano.
+
+Detalhes que valem saber:
+
+- O par aberto no gráfico é conferido **a cada tick** do WebSocket; os demais
+  entram numa consulta de preço a cada **15 s**. Ou seja: o alerta continua
+  valendo depois de trocar de par.
+- Tudo roda no navegador — **a página precisa estar aberta**. Fechou a aba, os
+  alertas ficam salvos, mas não são monitorados até você abrir de novo.
+- Alertas e preferências (som, posição do painel) ficam no localStorage junto com
+  o resto do layout.
+
 ## Suíte ICT / Smart Money Concepts
 
 O chip **📐 ICT** liga um conjunto de leituras baseadas no currículo do
@@ -118,7 +152,7 @@ para escolher as camadas:
 | **Liquidez** | Pools de stops (BSL acima / SSL abaixo). `EQH ×n` / `EQL ×n` = topos ou fundos iguais; `✓` = já varrido |
 | **Premium/Discount** | Dealing range com equilíbrio em 50% e a zona **OTE** (retração 0.62–0.79) |
 | **Killzones** | Ásia, London Open, NY Open e London Close, em **horário de Nova York** |
-| **Painel** | Resumo flutuante do viés (posição ajustável em **⚙**) |
+| **Painel** | Resumo flutuante do viés — arraste pelo título para mover (canto inicial em **⚙**) |
 
 Detalhes que valem saber:
 

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { fetchCandles } from '../api/rest.js';
 import { rsi } from '../indicators/rsi.js';
+import FloatingPanel from './FloatingPanel.jsx';
 
 // Timeframes shown in the panel. `key` doubles as the Binance interval string
 // (all of these are valid Binance klines intervals); `label` is the display text.
@@ -29,6 +30,7 @@ function lastRsi(candles, period) {
  * Floating multi-timeframe RSI panel for the current symbol.
  * - Fetches candles for all 8 timeframes and recomputes on a periodic refresh.
  * - The timeframe matching the chart's live feed updates in real time via `liveCandle`.
+ * - Dragging lives in FloatingPanel; `xy`/`onMove` only carry the position through.
  */
 export default function RsiPanel({
   symbol,
@@ -37,6 +39,8 @@ export default function RsiPanel({
   overbought = 70,
   oversold = 30,
   position = 'bottom-right',
+  xy = null,
+  onMove,
   showValues = true,
   liveCandle,
 }) {
@@ -96,11 +100,19 @@ export default function RsiPanel({
   }, [liveCandle, symbol, period]);
 
   return (
-    <div className={`rsi-panel rsi-${position}`}>
-      <div className="rsi-panel-head">
-        <span>RSI {period}</span>
-        <span className="rsi-panel-sym">{symbol}</span>
-      </div>
+    <FloatingPanel
+      className="rsi-panel"
+      position={position}
+      xy={xy}
+      onMove={onMove}
+      headClassName="rsi-panel-head"
+      head={(
+        <>
+          <span>RSI {period}</span>
+          <span className="rsi-panel-sym">{symbol}</span>
+        </>
+      )}
+    >
       <table className="rsi-table">
         <tbody>
           {PANEL_TFS.map((tf) => {
@@ -126,6 +138,6 @@ export default function RsiPanel({
           })}
         </tbody>
       </table>
-    </div>
+    </FloatingPanel>
   );
 }
