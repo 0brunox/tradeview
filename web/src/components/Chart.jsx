@@ -17,8 +17,9 @@ import { TrendLinesPrimitive, nearestLine } from '../lib/trendPrimitive.js';
 import { MeasurePrimitive, makeMeasurement } from '../lib/measurePrimitive.js';
 import { LiqHeatmapPrimitive } from '../lib/liqHeatmapPrimitive.js';
 import { IctPrimitive } from '../lib/ictPrimitive.js';
+import { PaneTitlePrimitive } from '../lib/paneTitlePrimitive.js';
 import { liquidationHeatmap } from '../indicators/liquidationHeatmap.js';
-import { fetchOpenInterestHist } from '../api/derivatives.js';
+import { fetchOpenInterestHist, resolvePerpSymbol } from '../api/derivatives.js';
 import { parseSymbol } from '../api/source.js';
 
 const newId = () =>
@@ -39,6 +40,8 @@ const C = {
   signal: '#ff7043',
   alert: '#f0b90b',
   alertOff: '#5b6373',
+  fundPos: 'rgba(38,166,154,0.85)',
+  fundNeg: 'rgba(239,83,80,0.85)',
 };
 
 // Lightweight-charts rejects histogram values outside ±(MAX_SAFE_INTEGER/100).
@@ -69,6 +72,40 @@ function chartOptions() {
 }
 
 const line = (extra) => ({ lineWidth: 2, priceLineVisible: false, lastValueVisible: false, ...extra });
+
+// Notação curta para os painéis de fluxo: eles mostram quantidade de moedas
+// (CVD, Open Interest), onde 255.7K lê melhor que 255 722.
+function compact(v) {
+  if (v == null || !Number.isFinite(v)) return '—';
+  const a = Math.abs(v);
+  if (a >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
+  if (a >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
+  if (a >= 1e3) return `${(v / 1e3).toFixed(2)}K`;
+  return v.toFixed(a >= 1 ? 2 : 4);
+}
+
+// Candles dos painéis de fluxo: mesmas cores do preço, escala em moedas.
+const flowCandles = () => ({
+  upColor: C.up,
+  downColor: C.down,
+  borderVisible: false,
+  wickUpColor: C.up,
+  wickDownColor: C.down,
+  priceLineVisible: false,
+  priceFormat: { type: 'custom', formatter: compact, minMove: 0.01 },
+});
+
+const srcLabel = (list) =>
+  (list ?? []).map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join('+');
+
+// Título no canto do painel — a lib não tem isso pronto, então é um primitive.
+function attachPaneTitle(chart, paneIndex) {
+  const pane = chart.panes()[paneIndex];
+  if (!pane) return null;
+  const title = new PaneTitlePrimitive();
+  pane.attachPrimitive(title);
+  return title;
+}
 
 // Decimal places suited to a price magnitude — micro-caps (e.g. PEPE) need many.
 function pricePrecision(p) {
@@ -104,7 +141,7 @@ function legendHtml(bar, symbol, interval) {
 export default function Chart({
   candles, indicators, liveCandle, symbol, interval, ictContext = null,
   tool = 'none', lines = [], onAddLine, onDeleteLine,
-  alerts = [], onCreateAlert,
+  alerts = [], onCreateAlert, flow = null,
 }) {
   const containerRef = useRef(null);
   const legendRef = useRef(null);
@@ -121,6 +158,8 @@ export default function Chart({
   linesRef.current = lines || [];
   const ictRef = useRef(ictContext); // latest ICT reading, for the rebuild closure
   ictRef.current = ictContext;
+  const flowRef = useRef(flow); // fluxo agregado (CVD / OI / funding) mais recente
+  flowRef.current = flow;
   const onAddLineRef = useRef(onAddLine);
   onAddLineRef.current = onAddLine;
   const onDeleteLineRef = useRef(onDeleteLine);
@@ -232,6 +271,33 @@ export default function Chart({
       pane += 1;
     }
 
+    // Painéis de fluxo: CVD do spot, Open Interest agregado e funding. Os dados
+    // chegam prontos pelo prop `flow` (REST, fora do stream de klines), então
+    // aqui só nascem as séries e o título de cada painel.
+    if (indicators.cvd?.on) {
+      api.cvd = chart.addSeries(CandlestickSeries, flowCandles(), pane);
+      api.cvdTitle = attachPaneTitle(chart, pane);
+      pane += 1;
+    }
+    if (indicators.oi?.on) {
+      api.oi = chart.addSeries(CandlestickSeries, flowCandles(), pane);
+      api.oiTitle = attachPaneTitle(chart, pane);
+      pane += 1;
+    }
+    if (indicators.funding?.on) {
+      api.funding = chart.addSeries(
+        HistogramSeries,
+        {
+          priceLineVisible: false,
+          base: 0,
+          priceFormat: { type: 'custom', formatter: (v) => `${v.toFixed(4)}%`, minMove: 0.0001 },
+        },
+        pane,
+      );
+      api.fundingTitle = attachPaneTitle(chart, pane);
+      pane += 1;
+    }
+
     // recomputes every active indicator from an up-to-date candle array
     api.refreshIndicators = (d) => {
       if (api.sma) api.sma.setData(sma(d, indicators.sma.period));
@@ -251,6 +317,44 @@ export default function Chart({
       }
     };
     api.refreshIndicators(data);
+
+    // joga o fluxo agregado nas séries dos painéis e atualiza os títulos
+    api.setFlow = (f) => {
+      const info = f?.info ?? {};
+      if (api.cvd) {
+        const rows = f?.cvd ?? [];
+        const last = rows[rows.length - 1];
+        api.cvd.setData(rows);
+        api.cvdTitle?.setText(
+          `CVD Spot · ${info.markets?.length ? `${info.markets.length} mercados` : 'agregado'}`,
+          last ? compact(last.close) : '—',
+          last && last.close < last.open ? C.down : C.up,
+        );
+      }
+      if (api.oi) {
+        const rows = f?.oi ?? [];
+        const last = rows[rows.length - 1];
+        api.oi.setData(rows);
+        api.oiTitle?.setText(
+          `Open Interest · ${srcLabel(info.oiSources) || 'perp'}`,
+          last ? compact(last.close) : '—',
+          last && last.close < last.open ? C.down : C.up,
+        );
+      }
+      if (api.funding) {
+        const rows = f?.funding ?? [];
+        const last = rows[rows.length - 1];
+        api.funding.setData(
+          rows.map((r) => ({ time: r.time, value: r.value, color: r.value >= 0 ? C.fundPos : C.fundNeg })),
+        );
+        api.fundingTitle?.setText(
+          `Funding 8h · ${srcLabel(info.fundingSources) || 'perp'}`,
+          last ? `${last.value.toFixed(4)}%` : '—',
+          last && last.value < 0 ? C.down : C.up,
+        );
+      }
+    };
+    api.setFlow(flowRef.current);
 
     // pane sizing: price dominant
     const panes = chart.panes();
@@ -281,7 +385,9 @@ export default function Chart({
     api.liqHeat = liqHeat;
     if (indicators.liqheat?.on) {
       const bare = parseSymbol(metaRef.current.symbol).symbol;
-      fetchOpenInterestHist(bare, '1h', 500)
+      // o contrato pode ter outro nome (PEPEUSDT → 1000PEPEUSDT)
+      resolvePerpSymbol(bare)
+        .then((perp) => fetchOpenInterestHist(perp ?? bare, '1h', 500))
         .then((oi) => { if (apiRef.current === api) liqHeat.setData(liquidationHeatmap(oi)); })
         .catch(() => { /* no Binance perp for this symbol — leave empty */ });
     }
@@ -449,6 +555,11 @@ export default function Chart({
   useEffect(() => {
     apiRef.current?.syncAlerts?.(alerts || []);
   }, [alerts]);
+
+  // ---- push the aggregated flow (CVD / OI / funding) when it reloads ----
+  useEffect(() => {
+    apiRef.current?.setFlow?.(flow);
+  }, [flow]);
 
   // ---- push the ICT reading (recomputed upstream on every tick) ----
   useEffect(() => {

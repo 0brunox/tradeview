@@ -157,6 +157,27 @@ export default function Toolbar({
         <Chip active={i.rsi.on} onClick={() => onToggle('rsi')} title="Índice de Força Relativa">RSI {i.rsi.period}</Chip>
         <Chip active={i.macd.on} onClick={() => onToggle('macd')} title="MACD">MACD</Chip>
         <Chip active={i.rsimtf.on} onClick={() => onToggle('rsimtf')} title="Painel RSI multi-timeframe">RSI MTF</Chip>
+        <Chip
+          active={i.cvd.on}
+          onClick={() => onToggle('cvd')}
+          title="CVD do spot: compras a mercado menos vendas a mercado, acumuladas e somadas nos mercados USDT/FDUSD/USDC da Binance. Painel próprio, em moedas."
+        >
+          Δ CVD Spot
+        </Chip>
+        <Chip
+          active={i.oi.on}
+          onClick={() => onToggle('oi')}
+          title="Open Interest agregado dos perpétuos (Binance USDT-M + Bybit linear), em moedas, desenhado em candles."
+        >
+          OI Agregado
+        </Chip>
+        <Chip
+          active={i.funding.on}
+          onClick={() => onToggle('funding')}
+          title="Funding médio das corretoras, ponderado pelo Open Interest de cada uma, em % por período de 8h. Verde = longs pagando, vermelho = shorts pagando."
+        >
+          Funding
+        </Chip>
         <Chip active={i.liqheat.on} onClick={() => onToggle('liqheat')} title="Liquidation Heatmap (estimado via Open Interest de futuros — Binance perp)">🔥 Liq</Chip>
         <Chip active={i.ict.on} onClick={() => onToggle('ict')} title="Suíte ICT / Smart Money Concepts: estrutura, FVG, order blocks, liquidez, premium/discount e killzones">📐 ICT</Chip>
 

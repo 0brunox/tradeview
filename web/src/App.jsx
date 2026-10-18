@@ -13,11 +13,13 @@ import { createLiveClient } from './api/ws.js';
 import { loadState, saveState } from './lib/storage.js';
 import { makeAlert, rearmAlert, triggerAlert, fmtPrice } from './lib/alerts.js';
 import { useAlertWatcher } from './lib/useAlertWatcher.js';
+import { useFlowData } from './lib/useFlowData.js';
 import { askNotificationPermission, notificationState, playAlertBeep, showNotification } from './lib/notify.js';
 import { bareSymbol } from './api/source.js';
 import { API_BASE, IS_DIRECT } from './api/config.js';
 
 const INTERVALS = ['1m', '5m', '15m', '1h', '4h', '12h', '1d', '1w', '1M'];
+const NO_CANDLES = []; // identidade fixa: evita refazer o fluxo a cada render
 const EMA_COLORS = ['#42a5f5', '#ff9800', '#ab47bc', '#26c6da', '#ec407a', '#9ccc65'];
 
 function makeDefaults() {
@@ -41,6 +43,11 @@ function makeDefaults() {
       pos: 'bottom-right', xy: null, showValues: true,
     },
     liqheat: { on: false },
+    // Painéis de fluxo agregado, sob o preço: delta do spot (CVD), Open
+    // Interest e funding do perp, somando Binance e Bybit.
+    cvd: { on: false },
+    oi: { on: false },
+    funding: { on: false },
     // Suíte ICT / Smart Money: `on` liga o conjunto, os demais escolhem as camadas.
     ict: {
       on: false,
@@ -137,6 +144,17 @@ export default function App() {
     () => (indicators.ict.on && dataReady ? buildIctContext(mergedCandles, { symbol, interval }) : null),
     [indicators.ict.on, dataReady, mergedCandles, symbol, interval],
   );
+
+  // Fluxo agregado dos painéis de CVD / OI / funding. O eixo de tempo é o dos
+  // candles já carregados: enquanto o par novo não chega, não há onde encaixar.
+  const flow = useFlowData({
+    symbol,
+    interval,
+    candles: dataReady ? candles : NO_CANDLES,
+    cvd: indicators.cvd.on,
+    oi: indicators.oi.on,
+    funding: indicators.funding.on,
+  });
 
   // Preço atual do ativo aberto — base para a direção dos alertas novos.
   const livePrice = mergedCandles.length && dataReady
@@ -306,6 +324,7 @@ export default function App() {
               onDeleteLine={deleteLine}
               alerts={dataReady ? symbolAlerts : []}
               onCreateAlert={addAlert}
+              flow={flow}
             />
           ) : (
             !error && <div className="banner">Carregando {symbol} · {interval}…</div>

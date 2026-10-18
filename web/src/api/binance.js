@@ -43,7 +43,9 @@ const compare = (a, b) =>
   a.symbol.length - b.symbol.length ||
   a.symbol.localeCompare(b.symbol);
 
-function splitSymbol(sym) {
+// Quebra "BTCFDUSD" em base + quote. Exportado porque o fluxo spot agregado
+// precisa do ativo base para achar os outros mercados stable do mesmo ativo.
+export function splitSymbol(sym) {
   for (const q of QUOTES) {
     if (sym.length > q.length && sym.endsWith(q)) {
       return { baseAsset: sym.slice(0, -q.length), quoteAsset: q };

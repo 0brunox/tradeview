@@ -20,6 +20,8 @@ proxy dos dados da **Binance** e (opcionalmente) os persiste em **PostgreSQL**.
   - **MACD** (linha, sinal e histograma, em painel próprio)
   - **KDJ** e **pivôs/swings** (calculados para a análise de IA)
   - **Volume** (overlay colorido)
+- 🌊 **Painéis de fluxo agregado** (sob o preço): **CVD do spot** em candles,
+  **Open Interest** somando Binance e Bybit e **funding** médio ponderado por OI
 - 📐 **Suíte ICT / Smart Money Concepts**: estrutura (BOS/CHoCH), Fair Value Gaps,
   order blocks, pools de liquidez, premium/discount com OTE e killzones —
   desenhados no gráfico e resumidos num painel de viés
@@ -59,10 +61,10 @@ tradeview/
    └─ src/
       ├─ App.jsx             # estado, fetch, real-time, persistência
       ├─ components/         # Chart.jsx + Toolbar.jsx + SymbolSearch.jsx + AiPanel.jsx + IctPanel.jsx + FloatingPanel.jsx + AlertsPanel.jsx
-      ├─ indicators/         # sma, ema, rsi, macd, bollinger, kdj, levels
+      ├─ indicators/         # sma, ema, rsi, macd, bollinger, kdj, levels, flow
       │  └─ ict/             # estrutura, fvg, order blocks, liquidez, range, sessões
-      ├─ lib/                # storage.js, trendPrimitive.js, ictPrimitive.js, snapshot.js, markdown.js, alerts.js
-      └─ api/                # cliente REST + WebSocket + ai.js
+      ├─ lib/                # storage.js, trendPrimitive.js, ictPrimitive.js, paneTitlePrimitive.js, useFlowData.js, snapshot.js, markdown.js, alerts.js
+      └─ api/                # cliente REST + WebSocket + ai.js + derivatives.js + spotFlow.js
 ```
 
 ## Pré-requisitos
@@ -168,6 +170,55 @@ Detalhes que valem saber:
   ao range médio do ativo, não percentuais fixos — o mesmo código serve BTC e PEPE.
 
 > ⚠️ São ferramentas de leitura de gráfico, não sinais de compra e venda.
+
+## Fluxo agregado: CVD, Open Interest e funding
+
+Três chips abrem um painel próprio embaixo do preço, no mesmo eixo de tempo dos
+candles. São os dados que respondem *por que* o preço está andando: quem está
+batendo no book à vista, quanta posição nova entrou no perpétuo e de que lado
+ela está pagando.
+
+| Chip | Painel | O que é |
+|---|---|---|
+| **Δ CVD Spot** | Candles | *Cumulative Volume Delta* do spot: compra a mercado menos venda a mercado, acumulada. Em moedas do ativo |
+| **OI Agregado** | Candles | Open Interest dos perpétuos, em moedas, somando **Binance USDT-M + Bybit linear** |
+| **Funding** | Histograma | Taxa média das corretoras **ponderada pelo Open Interest** de cada uma, em % por período de 8h |
+
+A leitura clássica é combinar os três: preço caindo **com** CVD spot caindo é
+venda à vista de verdade; preço caindo com CVD spot firme, OI subindo e funding
+negativo é short entrando — combustível para squeeze.
+
+Como os números saem:
+
+- **CVD**: o kline da Binance informa quanto do volume foi *taker buy*; o resto
+  foi taker sell. O delta de cada candle é a diferença, somada nos mercados
+  **USDT + FDUSD + USDC** do mesmo ativo (em BTC o FDUSD tem volume comparável ao
+  do USDT, então olhar só o par aberto subestima o fluxo). O acumulado começa em
+  zero no primeiro candle carregado — o que importa é a inclinação, não o nível.
+  O kline não guarda o caminho dentro da barra, então os candles de CVD saem sem
+  sombra.
+- **Open Interest**: histórico das duas corretoras, cada uma com sua
+  granularidade, unidas com *forward fill* e só então somadas — o total começa
+  onde as duas já têm valor, senão apareceria um degrau falso. A Binance guarda
+  **~30 dias** de histórico de OI: em timeframes grandes o painel fica mais curto
+  que o gráfico, e isso é o dado que existe.
+- **Funding**: a Binance entra com uma estimativa contínua, um valor por candle,
+  a partir do *premium index* médio das últimas 8h (`funding = premium +
+  clamp(juros − premium, ±0,05%)`) — é o que a taxa do próximo pagamento está
+  medindo. A Bybit entra com as taxas já liquidadas, em degrau até a próxima.
+  Verde = longs pagando shorts; vermelho = o contrário.
+- **Nome do contrato**: memecoins são listadas no perpétuo em lotes
+  (`PEPEUSDT` no spot → `1000PEPEUSDT` no perp). O app descobre o nome certo uma
+  vez por sessão e usa em todo o fluxo de derivativos, inclusive no heatmap de
+  liquidação.
+
+Tudo vem direto das APIs públicas da Binance e da Bybit (as duas mandam CORS
+liberado), sem backend e sem chave. Os painéis recarregam a cada **30s** — o
+candle em formação só ganha fluxo no refresh, não a cada tick.
+
+> ⚠️ Spot agregado aqui significa *os mercados stable da Binance*, não a soma de
+> todas as corretoras do mundo — o painel diz quantos mercados e quais
+> corretoras entraram em cada agregado.
 
 ## Análise por IA
 
