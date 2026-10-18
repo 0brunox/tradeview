@@ -32,8 +32,8 @@ proxy dos dados da **Binance** e (opcionalmente) os persiste em **PostgreSQL**.
   título para qualquer ponto do gráfico — a posição fica salva com o layout
 - 📏 **Régua**: meça variação (%, absoluta), nº de barras e tempo entre dois pontos
 - 🤖 **Análise por IA**: painel lateral com um relatório técnico do ativo/timeframe
-  atual (panorama, leitura combinada dos indicadores, fluxo de derivativos, níveis
-  e justificativa), escrito por **Claude** e transmitido em streaming
+  atual (panorama, leitura combinada dos indicadores, fluxo spot e de derivativos,
+  níveis e justificativa), escrito por **Claude** e transmitido em streaming
 - ⭐ **Watchlist**: menu lateral com seus ativos favoritos e preço/variação 24h ao vivo
 - ⚡ **Tempo real** via WebSocket (stream de klines da Binance)
 - 🗄️ **PostgreSQL** como cache write-through — com *fallback automático* para
@@ -212,6 +212,9 @@ Como os números saem:
   vez por sessão e usa em todo o fluxo de derivativos, inclusive no heatmap de
   liquidação.
 
+Esses três números também vão no snapshot da [análise por IA](#fluxo-no-snapshot),
+para o relatório poder cruzar preço com fluxo.
+
 Tudo vem direto das APIs públicas da Binance e da Bybit (as duas mandam CORS
 liberado), sem backend e sem chave. Os painéis recarregam a cada **30s** — o
 candle em formação só ganha fluxo no refresh, não a cada tick.
@@ -227,16 +230,38 @@ ativo e timeframe atuais. O fluxo é:
 
 1. O **browser** monta um *snapshot* numérico do mercado — médias móveis
    (5/10/20/60/120 + EMA 9/21), MACD, Bollinger, RSI (incluindo multi-timeframe),
-   KDJ, pivôs e swings, volume, taxa de funding, Open Interest, a **leitura ICT**
-   (estrutura, FVGs e order blocks abertos, liquidez, premium/discount, Power of 3)
-   e os 40 candles mais recentes. Tudo calculado localmente, como os demais
-   indicadores — o bloco ICT é o **mesmo objeto** que o gráfico desenha.
+   KDJ, pivôs e swings, volume, o **fluxo agregado** (CVD spot, Open Interest e
+   funding), a **leitura ICT** (estrutura, FVGs e order blocks abertos, liquidez,
+   premium/discount, Power of 3) e os 40 candles mais recentes. Tudo calculado
+   localmente, como os demais indicadores — o bloco ICT e o de fluxo saem das
+   **mesmas funções** que o gráfico desenha.
 2. Esse snapshot vai por `POST /api/analyze`, onde é **validado campo a campo**:
    só números e símbolos/timeframes conhecidos passam, e cada rótulo do bloco ICT
    (`BOS`, `discount`, `BSL`, `breaker`…) é conferido contra uma **lista fechada de
    valores**. Nenhum texto livre do cliente entra no prompt.
 3. O servidor chama o **Claude** (`claude-opus-5`) e devolve o relatório em
    **streaming**, então o texto aparece conforme é escrito.
+
+### Fluxo no snapshot
+
+O bloco `derivatives` leva os mesmos números dos painéis de fluxo, derivados das
+funções puras de `indicators/flow.js` — então o relatório fala do que está na
+tela, e pode cruzar preço com fluxo (alta com OI caindo é cobertura de short;
+queda com CVD spot firme e funding negativo é short entrando, e por aí):
+
+| Campo | O que vai |
+|---|---|
+| `cvdSpot` | variação do CVD nos últimos 20 e 5 candles (em moedas), quanto isso representa do volume da janela, o delta do candle em formação, a inclinação (`up`/`down`/`flat`) e quantos mercados spot entraram na soma |
+| `openInterest` | OI agregado atual em **moedas**, variação % na janela carregada e em 24h, e as corretoras somadas |
+| `funding` | taxa agregada atual e média da janela, em % por 8h, e quantos candles ficaram negativos |
+
+Os quatro campos antigos (`fundingRatePct`, `markPrice`, `openInterestUsd`,
+`openInterestChangePct24h`) continuam lá: são a leitura só da Binance, em USD.
+
+Cada sub-bloco cai para `null` sozinho — ativo sem perpétuo (`BTCBRL`) mantém o
+`cvdSpot` e zera os outros dois, e corretora fora do ar some do agregado sem
+derrubar o relatório. O prompt trata `null` como *dado indisponível*, então o
+modelo diz que o dado falta em vez de estimá-lo.
 
 Relatórios ficam em cache por ativo+timeframe enquanto o painel estiver aberto —
 voltar para um par já analisado não gasta uma nova chamada. **↻ Nova** força

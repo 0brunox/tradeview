@@ -57,6 +57,49 @@ const asPoolKind = enumOf(['BSL', 'SSL']);
 const asKillzone = enumOf(['asia', 'london', 'nyopen', 'nyclose']);
 const asPo3Phase = enumOf(['accumulation', 'manipulation', 'distribution']);
 const asJudasDir = enumOf(['up', 'down']);
+const asSlope = enumOf(['up', 'down', 'flat']);
+const asFlowSource = enumOf(['binance', 'bybit']);
+
+/** Corretoras que entraram num agregado: só os nomes previstos, sem repetição. */
+function sourceList(arr) {
+  if (!Array.isArray(arr)) return [];
+  return [...new Set(arr.map(asFlowSource).filter(Boolean))];
+}
+
+/**
+ * Bloco de derivativos: as medidas diretas do perp mais os três sub-blocos de
+ * fluxo agregado. Cada sub-bloco é null por conta própria — ativo sem perp ou
+ * corretora fora do ar não invalida o resto do snapshot.
+ */
+function sanitizeDerivatives(raw) {
+  const base = nums(raw, [
+    'fundingRatePct', 'markPrice', 'openInterestUsd', 'openInterestChangePct24h',
+  ]);
+  if (!base) return null;
+
+  const block = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? v : null);
+  const cvd = block(raw.cvdSpot);
+  const oi = block(raw.openInterest);
+  const funding = block(raw.funding);
+
+  return {
+    ...base,
+    cvdSpot: cvd && {
+      ...nums(cvd, [
+        'changeLast20', 'changeLast5', 'changePctOfVolume', 'barDelta', 'bars', 'marketCount',
+      ]),
+      slope: asSlope(cvd.slope),
+    },
+    openInterest: oi && {
+      ...nums(oi, ['current', 'changePctWindow', 'changePct24h', 'bars']),
+      sources: sourceList(oi.sources),
+    },
+    funding: funding && {
+      ...nums(funding, ['currentPct', 'avgPct', 'negativeBars', 'bars']),
+      sources: sourceList(funding.sources),
+    },
+  };
+}
 
 /** Bloco ICT: números por `n()`, textos por lista fechada, arrays limitados. */
 function sanitizeIct(raw) {
@@ -162,9 +205,7 @@ export function sanitizeSnapshot(raw) {
       range200: nums(raw.levels?.range200, ['high', 'low', 'bars']),
     },
     volume: nums(raw.volume, ['lastBar', 'avg20', 'ratioToAvg20']),
-    derivatives: nums(raw.derivatives, [
-      'fundingRatePct', 'markPrice', 'openInterestUsd', 'openInterestChangePct24h',
-    ]),
+    derivatives: sanitizeDerivatives(raw.derivatives),
     ict: sanitizeIct(raw.ict),
     candles,
   };
@@ -198,7 +239,18 @@ liquidity* — o pool mais provável de ser buscado — e o que já foi varrido)
 FVGs / order blocks ainda abertos que estejam mais perto do preço. Se houver
 \`po3\`, diga em que fase o pregão está e o que o Judas Swing sugere.
 ### Análise de Dados e Fluxo
-Taxa de funding, Open Interest e comportamento do volume.
+Cruze o preço com o fluxo em vez de só descrever cada número: CVD spot (quem
+bateu no book à vista), Open Interest (quanta posição nova entrou no perpétuo),
+funding (de que lado ela está pagando) e volume. As combinações que importam:
+- preço caindo **com** CVD spot caindo = venda à vista de verdade, distribuição;
+- preço caindo com CVD spot firme, OI subindo e funding negativo = short
+  entrando — queda alavancada, combustível para squeeze;
+- preço subindo com OI caindo = alta por fechamento de short, não por compra nova;
+- preço subindo com OI subindo e funding esticado para cima = long alavancado,
+  vulnerável a liquidação na primeira correção;
+- CVD spot subindo sem o preço acompanhar = absorção: tem oferta passiva segurando.
+Nomeie a combinação que os números mostram, com eles ao lado. Se não encaixar em
+nenhuma dessas, diga isso em vez de forçar a que estiver mais perto.
 
 ## Resultado da Análise
 - **Direção**: viés operacional
@@ -239,7 +291,28 @@ export function buildUserPrompt(snap) {
     '- `levels.pivot`: pivôs clássicos sobre o último candle FECHADO deste timeframe.',
     '- `levels.swingHighs`/`swingLows`: topos e fundos recentes, do mais novo ao mais antigo.',
     '- `volume.ratioToAvg20`: volume do último candle dividido pela média de 20.',
-    '- `derivatives.fundingRatePct`: taxa de funding do perp em % por período de 8h.',
+    '- `derivatives.fundingRatePct`: taxa já liquidada do perp da Binance, em % por 8h.',
+    '- `derivatives.cvdSpot`: fluxo do mercado À VISTA, somado nos mercados stable do',
+    '  ativo (USDT + FDUSD + USDC), em moedas do ativo base. CVD = compra a mercado',
+    '  menos venda a mercado, acumulada. `changeLast20`/`changeLast5` = variação do',
+    '  acumulado nos últimos 20/5 candles — o nível absoluto não existe (a série é',
+    '  ancorada em zero), só a inclinação. `changePctOfVolume` põe a variação de 20',
+    '  candles em escala: quanto ela representa do volume total negociado na janela.',
+    '  `barDelta` é o delta do candle em formação, e `slope` resume a inclinação',
+    '  (`flat` = variação abaixo de 0,5% do volume, ou seja, ruído).',
+    '- `derivatives.openInterest`: OI agregado dos perpétuos (Binance USDT-M + Bybit',
+    '  linear), em MOEDAS do ativo — não em dólares, então ele não muda só porque o',
+    '  preço mudou. `changePctWindow` cobre os `bars` candles carregados;',
+    '  `changePct24h` é null quando o histórico não alcança 24h. OI subindo = posição',
+    '  nova abrindo; caindo = posição sendo fechada ou liquidada.',
+    '- `derivatives.funding`: taxa agregada das corretoras, ponderada pelo OI de cada',
+    '  uma, em % por período de 8h. Positiva = longs pagando shorts. `avgPct` é a',
+    '  média da janela e `negativeBars` quantos dos `bars` candles ficaram negativos',
+    '  (posicionamento vendido persistente, que a taxa atual sozinha esconde).',
+    '- Cada bloco de fluxo vira null por conta própria: `cvdSpot` quando o ativo não',
+    '  tem spot na Binance, `openInterest`/`funding` quando ele não tem perpétuo',
+    '  (pares em BRL, por exemplo). Com os três null, não há leitura de fluxo —',
+    '  diga isso e fique nos indicadores clássicos.',
     '- `candles`: os mais recentes, em ordem cronológica (t = epoch em segundos).',
     '- `ict`: leitura Smart Money (null quando não há histórico suficiente).',
     '  - `bias`/`lastEvent`: direção da estrutura e o último rompimento. `BOS` = a favor',
